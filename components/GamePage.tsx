@@ -222,7 +222,7 @@ export default function GamePage() {
       </header>
 
       {/* Score panel */}
-      <ScorePanel games={games} mode={mode} drankSet={drankSet} today={today} fetchedAt={fetchedAt || new Date().toISOString()} />
+      <ScorePanel games={games} mode={mode} drankSet={drankSet} today={today} fetchedAt={fetchedAt} />
 
       {/* View toggle — Groups vs Bracket */}
       <div className="flex justify-center px-4 pt-4 pb-0">
