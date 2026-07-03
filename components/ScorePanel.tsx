@@ -137,7 +137,10 @@ export default function ScorePanel({ games, mode, drankSet, today, fetchedAt }: 
     byDay[g.date].push(g)
   })
 
-  const fmtTime   = new Date(fetchedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+  // Only format once we have a real fetch timestamp. Rendering a time during SSR
+  // (or from a render-time `new Date()`) would differ from the client's clock and
+  // timezone, causing a hydration mismatch.
+  const fmtTime   = fetchedAt ? new Date(fetchedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''
   const hasContent = todayGames.length > 0
 
   // Short "Mon · Jun 22" style label for a YYYY-MM-DD date. Parsed at local noon
@@ -254,7 +257,9 @@ export default function ScorePanel({ games, mode, drankSet, today, fetchedAt }: 
             </div>
           )}
 
-          <p className="text-white/25 text-[10px] text-center">✓ Updated {fmtTime} · auto-refreshes every 60s</p>
+          {fmtTime && (
+            <p className="text-white/25 text-[10px] text-center">✓ Updated {fmtTime} · auto-refreshes every 60s</p>
+          )}
         </div>
       )}
 

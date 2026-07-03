@@ -9,6 +9,9 @@ import PullToRefresh from '@/components/PullToRefresh'
 
 const DRANK_KEY = 'wc2026_drank_v3'
 const GROUPS = ['A','B','C','D','E','F','G','H','I','J','K','L']
+const KNOCKOUT_ROUNDS = new Set([
+  'Round of 32', 'Round of 16', 'Quarter-final', 'Semi-final', 'Match for third place', 'Final',
+])
 
 type View = 'groups' | 'bracket'
 
@@ -219,7 +222,7 @@ export default function GamePage() {
       </header>
 
       {/* Score panel */}
-      <ScorePanel games={games} mode={mode} drankSet={drankSet} today={today} fetchedAt={fetchedAt || new Date().toISOString()} />
+      <ScorePanel games={games} mode={mode} drankSet={drankSet} today={today} fetchedAt={fetchedAt} />
 
       {/* View toggle — Groups vs Bracket */}
       <div className="flex justify-center px-4 pt-4 pb-0">
@@ -247,9 +250,7 @@ export default function GamePage() {
       {view === 'bracket' && (
         <Bracket
           mode={mode}
-          knockoutGames={games.filter(g => g.status !== 'scheduled' && !['A','B','C','D','E','F','G','H','I','J','K','L'].some(
-            grp => TEAMS.filter(t => t.g === grp).some(t => t.abbr === g.home || t.abbr === g.away)
-          ))}
+          knockoutGames={games.filter(g => KNOCKOUT_ROUNDS.has(g.round ?? ''))}
           drankSet={drankSet}
           onToggle={toggleDrank}
         />

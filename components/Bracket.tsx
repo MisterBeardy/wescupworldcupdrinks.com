@@ -1,7 +1,7 @@
 'use client'
 import { Mode, Game } from '@/lib/types'
 import { TEAMS, MODE_META } from '@/lib/teams'
-import { R16_DEFINITIONS, QF_DEFINITIONS, SF_DEFINITIONS } from '@/lib/bracket'
+import { buildBracket, KoSlot } from '@/lib/bracket'
 import DrinkLink from './DrinkLink'
 
 interface Props {
@@ -11,455 +11,278 @@ interface Props {
   onToggle: (abbr: string) => void
 }
 
-interface MatchSlot {
-  id: string
-  roundLabel?: string
-  homeAbbr?: string
-  awayAbbr?: string
-  homeScore?: number
-  awayScore?: number
-  status?: 'scheduled' | 'live' | 'final'
-  label: string       // placeholder text when no teams confirmed
-  winnerAbbr?: string
-}
-
 const teamByAbbr = (abbr?: string) => TEAMS.find(t => t.abbr === abbr)
 
-function MatchCard({
-  slot,
-  mode,
-  drankSet,
-  onToggle,
-  size = 'md',
-}: {
-  slot: MatchSlot
-  mode: Mode
-  drankSet: Set<string>
-  onToggle: (abbr: string) => void
-  size?: 'sm' | 'md' | 'lg'
-}) {
-  const home = teamByAbbr(slot.homeAbbr)
-  const away = teamByAbbr(slot.awayAbbr)
-  const isFinal = slot.status === 'final'
-  const isLive  = slot.status === 'live'
-  const isEmpty = !home && !away
+// Bracket geometry (px). A binary tree lays out cleanly when each round's
+// vertical pitch doubles: a parent sits at the midpoint of its two children.
+const CARD_H = 58        // compact card (R32 → SF)
+const CARD_H_LG = 86     // roomier card with drink text (SF, Final)
+const PITCH = 76         // centre-to-centre spacing of Round-of-32 cards
+const HALF_H = PITCH * 8 // height of one half of the bracket (8 R32 leaves)
+const LABEL_H = 28       // column-header height, kept uniform so rows align
+const CONN_W = 26        // connector column width
+const LINE = 'rgba(255,255,255,0.15)'
 
-  const homeWon = isFinal && slot.homeScore !== undefined && slot.awayScore !== undefined && slot.homeScore > slot.awayScore
-  const awayWon = isFinal && slot.homeScore !== undefined && slot.awayScore !== undefined && slot.awayScore > slot.homeScore
+const half = <T,>(arr: T[]): [T[], T[]] => {
+  const mid = arr.length / 2
+  return [arr.slice(0, mid), arr.slice(mid)]
+}
 
-  const widths = { sm: 'w-36', md: 'w-44', lg: 'w-52' }
-  const w = widths[size]
+export default function Bracket({ mode, knockoutGames, drankSet, onToggle }: Props) {
+  const { columns, final, third } = buildBracket(knockoutGames)
 
-  if (isEmpty) {
-    return (
-      <div className={`${w} border border-white/10 rounded-lg bg-white/3 overflow-hidden`}>
-        <div className="px-2.5 py-2 flex items-center gap-2 border-b border-white/8">
-          <span className="text-white/20 text-[10px] font-bold uppercase tracking-wider leading-tight">{slot.label}</span>
-        </div>
-        <div className="px-2.5 py-2 flex items-center gap-2">
-          <span className="text-white/20 text-[10px] font-bold uppercase tracking-wider leading-tight">TBD</span>
-        </div>
-      </div>
-    )
-  }
-
-  const TeamRow = ({
-    team,
+  function TeamRow({
     abbr,
+    label,
     score,
+    pens,
     won,
+    showDrink,
   }: {
-    team: ReturnType<typeof teamByAbbr>
     abbr?: string
+    label: string
     score?: number
+    pens?: number
     won: boolean
-  }) => {
-    const drink = team ? team[mode] : null
+    showDrink: boolean
+  }) {
+    const team = teamByAbbr(abbr)
+
+    if (!team) {
+      return (
+        <div className="flex-1 flex items-center px-2 min-h-0">
+          <span className="text-white/25 text-[9px] font-bold uppercase tracking-wide truncate">
+            {label || 'TBD'}
+          </span>
+        </div>
+      )
+    }
+
+    const drink = team[mode]
     const hasDrank = abbr ? drankSet.has(abbr) : false
 
     return (
       <div className={[
-        'px-2.5 py-1.5 flex items-center gap-1.5 group',
+        'flex-1 flex items-center gap-1.5 px-2 min-h-0',
         won ? 'bg-yellow-400/10' : '',
         hasDrank ? 'opacity-50' : '',
       ].join(' ')}>
-        {team ? (
-          <>
-            <span className="text-base leading-none flex-shrink-0">{team.flag}</span>
-            <div className="flex-1 min-w-0">
-              <div className={`text-xs font-bold leading-none truncate ${won ? 'text-yellow-300' : 'text-white/80'}`}>
-                {team.name}
-              </div>
-              {drink && (
-                <div className={`text-[9px] leading-tight mt-0.5 truncate ${MODE_META[mode].textSoft}`}>
-                  <DrinkLink drink={drink} />
-                </div>
-              )}
+        <span className="text-sm leading-none flex-shrink-0">{team.flag}</span>
+        <div className="flex-1 min-w-0">
+          <div className={`text-[11px] font-bold leading-tight truncate ${won ? 'text-yellow-300' : 'text-white/80'}`}>
+            {team.name}
+          </div>
+          {showDrink && drink && (
+            <div className={`text-[9px] leading-tight truncate ${MODE_META[mode].textSoft}`}>
+              <DrinkLink drink={drink} />
             </div>
-            {score !== undefined && (
-              <span className={`font-['Bebas_Neue'] text-base leading-none flex-shrink-0 ${won ? 'text-yellow-300' : 'text-white/60'}`}>
-                {score}
-              </span>
-            )}
-            {won && abbr && !hasDrank && (
-              <button
-                onClick={() => onToggle(abbr)}
-                title="Mark as drank"
-                className="text-[9px] bg-yellow-400/20 hover:bg-yellow-400/40 border border-yellow-400/40 text-yellow-300 rounded px-1 py-0.5 leading-none flex-shrink-0 transition-colors"
-              >
-                🥃
-              </button>
-            )}
-            {hasDrank && (
-              <button
-                onClick={() => abbr && onToggle(abbr)}
-                title="Undo"
-                className="text-[9px] text-orange-400 flex-shrink-0"
-              >
-                ✓
-              </button>
-            )}
-          </>
-        ) : (
-          <span className="text-white/20 text-[10px] uppercase tracking-wide">TBD</span>
+          )}
+        </div>
+        {score !== undefined && (
+          <span className={`font-['Bebas_Neue'] text-sm leading-none flex-shrink-0 ${won ? 'text-yellow-300' : 'text-white/50'}`}>
+            {score}
+            {pens !== undefined && <span className="text-[9px] align-top ml-0.5 opacity-70">({pens})</span>}
+          </span>
+        )}
+        {won && abbr && !hasDrank && (
+          <button
+            onClick={() => onToggle(abbr)}
+            title="Mark as drank"
+            className="text-[9px] bg-yellow-400/20 hover:bg-yellow-400/40 border border-yellow-400/40 text-yellow-300 rounded px-1 leading-none flex-shrink-0 transition-colors"
+          >
+            🥃
+          </button>
+        )}
+        {hasDrank && (
+          <button
+            onClick={() => abbr && onToggle(abbr)}
+            title="Undo"
+            className="text-[9px] text-orange-400 flex-shrink-0"
+          >
+            ✓
+          </button>
         )}
       </div>
     )
   }
 
-  return (
-    <div className={[
-      `${w} border rounded-lg overflow-hidden`,
-      isLive  ? 'border-red-500/50 bg-red-950/20' :
-      isFinal ? 'border-yellow-400/30 bg-yellow-950/10' :
-                'border-white/15 bg-white/4',
-    ].join(' ')}>
-      {isLive && (
-        <div className="px-2 py-0.5 bg-red-500/20 flex items-center gap-1">
-          <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
-          <span className="text-red-400 text-[9px] font-bold uppercase tracking-widest">Live</span>
-        </div>
-      )}
-      <TeamRow team={home} abbr={slot.homeAbbr} score={slot.homeScore} won={homeWon} />
-      <div className="border-t border-white/8" />
-      <TeamRow team={away} abbr={slot.awayAbbr} score={slot.awayScore} won={awayWon} />
-    </div>
-  )
-}
+  function Card({ slot, height, showDrink }: { slot: KoSlot; height: number; showDrink: boolean }) {
+    const isFinal = slot.status === 'final'
+    const isLive = slot.status === 'live'
+    return (
+      <div
+        style={{ height }}
+        className={[
+          'w-full border rounded-lg overflow-hidden flex flex-col relative',
+          isLive ? 'border-red-500/50 bg-red-950/20' :
+          isFinal ? 'border-yellow-400/30 bg-yellow-950/10' :
+                    'border-white/12 bg-white/4',
+        ].join(' ')}
+      >
+        {isLive && <span className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />}
+        <TeamRow
+          abbr={slot.homeAbbr}
+          label={slot.homeLabel}
+          score={slot.homeScore}
+          pens={slot.homePens}
+          won={slot.winnerAbbr != null && slot.winnerAbbr === slot.homeAbbr}
+          showDrink={showDrink}
+        />
+        <div className="border-t border-white/8" />
+        <TeamRow
+          abbr={slot.awayAbbr}
+          label={slot.awayLabel}
+          score={slot.awayScore}
+          pens={slot.awayPens}
+          won={slot.winnerAbbr != null && slot.winnerAbbr === slot.awayAbbr}
+          showDrink={showDrink}
+        />
+      </div>
+    )
+  }
 
-// Connector line between rounds
-function Connector({ count }: { count: number }) {
-  return (
-    <div className="flex flex-col" style={{ gap: `${(count - 1) * 4}rem` }}>
-      {Array.from({ length: count }).map((_, i) => (
-        <div key={i} className="flex items-center h-16">
-          <div className="w-4 border-t border-white/15" />
-          <div className="h-full border-r border-white/15" style={{ marginTop: i === 0 ? '50%' : undefined, marginBottom: i === count - 1 ? '50%' : undefined }} />
-        </div>
-      ))}
-    </div>
-  )
-}
+  // One half of one round, absolutely positioned so each card sits at the
+  // midpoint of the two children that feed it.
+  function Column({ slots, depth, width, tall }: { slots: KoSlot[]; depth: number; width: string; tall?: boolean }) {
+    const h = tall ? CARD_H_LG : CARD_H
+    const pitch = PITCH * Math.pow(2, depth)
+    return (
+      <div className={`relative flex-shrink-0 ${width}`} style={{ height: HALF_H }}>
+        {slots.map((s, i) => {
+          const center = pitch * (i + 0.5)
+          return (
+            <div key={s.num} className="absolute left-0 right-0 flex justify-center" style={{ top: center - h / 2 }}>
+              <Card slot={s} height={h} showDrink={!!tall} />
+            </div>
+          )
+        })}
+      </div>
+    )
+  }
 
-// A single column of match cards with a label
-function RoundColumn({
-  label,
-  slots,
-  mode,
-  drankSet,
-  onToggle,
-  size,
-  gap,
-}: {
-  label: string
-  slots: MatchSlot[]
-  mode: Mode
-  drankSet: Set<string>
-  onToggle: (abbr: string) => void
-  size?: 'sm' | 'md' | 'lg'
-  gap: string
-}) {
-  return (
-    <div className="flex flex-col items-center">
-      <div className="text-[10px] font-bold uppercase tracking-widest text-yellow-400/70 mb-3 text-center whitespace-nowrap">
+  // Connector between a round (children, at `depth`) and the next (parents).
+  // `side` flips the geometry so both halves point toward the centre.
+  function Connector({ depth, side }: { depth: number; side: 'left' | 'right' }) {
+    const parents = 8 / Math.pow(2, depth + 1)
+    const childPitch = PITCH * Math.pow(2, depth)
+    const outer = side === 'left' ? 0 : CONN_W
+    const inner = side === 'left' ? CONN_W : 0
+    const bus = CONN_W / 2
+    return (
+      <div className="flex flex-col flex-shrink-0">
+        <div style={{ height: LABEL_H }} />
+        <svg width={CONN_W} height={HALF_H}>
+          {Array.from({ length: parents }).map((_, j) => {
+            const c1 = childPitch * (2 * j + 0.5)
+            const c2 = childPitch * (2 * j + 1.5)
+            const mid = (c1 + c2) / 2
+            return (
+              <g key={j}>
+                <line x1={outer} y1={c1} x2={bus} y2={c1} stroke={LINE} />
+                <line x1={outer} y1={c2} x2={bus} y2={c2} stroke={LINE} />
+                <line x1={bus} y1={c1} x2={bus} y2={c2} stroke={LINE} />
+                <line x1={bus} y1={mid} x2={inner} y2={mid} stroke={LINE} />
+              </g>
+            )
+          })}
+        </svg>
+      </div>
+    )
+  }
+
+  // Straight connector between a Semi-Final and the Final (both centred).
+  function StraightConnector() {
+    return (
+      <div className="flex flex-col flex-shrink-0">
+        <div style={{ height: LABEL_H }} />
+        <svg width={CONN_W} height={HALF_H}>
+          <line x1={0} y1={HALF_H / 2} x2={CONN_W} y2={HALF_H / 2} stroke={LINE} />
+        </svg>
+      </div>
+    )
+  }
+
+  function ColHeader({ label }: { label: string }) {
+    return (
+      <div
+        className="text-[10px] font-bold uppercase tracking-widest text-yellow-400/70 text-center whitespace-nowrap flex items-center justify-center"
+        style={{ height: LABEL_H }}
+      >
         {label}
       </div>
-      <div className="flex flex-col" style={{ gap }}>
-        {slots.map(slot => (
-          <MatchCard
-            key={slot.id}
-            slot={slot}
-            mode={mode}
-            drankSet={drankSet}
-            onToggle={onToggle}
-            size={size}
-          />
-        ))}
-      </div>
-    </div>
-  )
-}
-
-export default function Bracket({ mode, knockoutGames, drankSet, onToggle }: Props) {
-  // Build slot map from knockout games (we'll match by team abbrs when available)
-  const gameMap = new Map<string, Game>()
-  knockoutGames.forEach(g => gameMap.set(`${g.home}-${g.away}`, g))
-
-  function buildSlots(defs: typeof R16_DEFINITIONS): MatchSlot[] {
-    return defs.map(def => {
-      // Try to find a matching game
-      const game = knockoutGames.find(g =>
-        (def.id.includes('r16') && false) // placeholder — will match when R16 data comes in
-      )
-      return {
-        id: def.id,
-        label: def.label,
-        homeAbbr: undefined,
-        awayAbbr: undefined,
-        homeScore: undefined,
-        awayScore: undefined,
-        status: undefined,
-        winnerAbbr: undefined,
-      }
-    })
-  }
-
-  const r16Slots = buildSlots(R16_DEFINITIONS)
-  const qfSlots  = buildSlots(QF_DEFINITIONS)
-  const sfSlots  = buildSlots(SF_DEFINITIONS)
-
-  // Overlay any actual knockout game data
-  knockoutGames.forEach(g => {
-    const allSlots = [...r16Slots, ...qfSlots, ...sfSlots]
-    const match = allSlots.find(s =>
-      (s.homeAbbr === g.home && s.awayAbbr === g.away) ||
-      (!s.homeAbbr && !s.awayAbbr && false) // future: match by round number
     )
-    if (match) {
-      match.homeScore = g.hs
-      match.awayScore = g.as
-      match.status = g.status
-      match.winnerAbbr = g.status === 'final'
-        ? (g.hs > g.as ? g.home : g.as > g.hs ? g.away : undefined)
-        : undefined
-    }
-  })
-
-  const finalSlot: MatchSlot = {
-    id: 'final',
-    label: 'FINAL',
-    homeAbbr: undefined,
-    awayAbbr: undefined,
   }
 
-  // Split into left and right halves for display
-  const r16Left  = r16Slots.slice(0, 8)
-  const r16Right = r16Slots.slice(8, 16)
-  const qfLeft   = qfSlots.slice(0, 4)
-  const qfRight  = qfSlots.slice(4, 8)
-  const sfLeft   = sfSlots.slice(0, 2)
-  const sfRight  = sfSlots.slice(2, 4)
+  const widths = ['w-32', 'w-32', 'w-36', 'w-44'] // r32, r16, qf, sf
+  const halves = columns.map(c => half(c.slots))
 
   return (
     <div className="w-full overflow-x-auto pb-8">
-      <div className="min-w-[900px] px-4 py-6">
+      <div className="min-w-[1620px] px-4 py-6">
         {/* Title */}
-        <div className="text-center mb-8">
+        <div className="text-center mb-6">
           <h2 className="font-['Bebas_Neue'] text-3xl tracking-widest text-yellow-400">
             ⚽ Knockout Bracket
           </h2>
           <p className="text-white/30 text-xs mt-1">
-            Slots fill in as group stage completes · Jul 4 – Jul 19
+            Fills in automatically as each match finishes · Jul 4 – Jul 19
           </p>
         </div>
 
-        {/* Bracket layout: R16 → QF → SF → Final → SF → QF → R16 */}
-        <div className="flex items-center justify-center gap-0">
+        {/* Bracket: R32 → R16 → QF → SF → Final → SF → QF → R16 → R32 */}
+        <div className="flex items-start justify-center">
 
-          {/* LEFT: R16 */}
-          <RoundColumn
-            label="Round of 16"
-            slots={r16Left}
-            mode={mode}
-            drankSet={drankSet}
-            onToggle={onToggle}
-            size="sm"
-            gap="0.75rem"
-          />
-
-          {/* Connector R16 → QF left */}
-          <svg width="32" className="flex-shrink-0" style={{ height: `${r16Left.length * 4.5}rem` }}>
-            {[0, 1, 2, 3].map(i => {
-              const pairTop  = i * 2 * 72 + 36
-              const pairBot  = pairTop + 72
-              const midY     = (pairTop + pairBot) / 2
-              return (
-                <g key={i}>
-                  <line x1="0" y1={pairTop} x2="16" y2={pairTop} stroke="rgba(255,255,255,0.15)" strokeWidth="1" />
-                  <line x1="0" y1={pairBot} x2="16" y2={pairBot} stroke="rgba(255,255,255,0.15)" strokeWidth="1" />
-                  <line x1="16" y1={pairTop} x2="16" y2={pairBot} stroke="rgba(255,255,255,0.15)" strokeWidth="1" />
-                  <line x1="16" y1={midY} x2="32" y2={midY} stroke="rgba(255,255,255,0.15)" strokeWidth="1" />
-                </g>
-              )
-            })}
-          </svg>
-
-          {/* LEFT: QF */}
-          <RoundColumn
-            label="Quarter-Finals"
-            slots={qfLeft}
-            mode={mode}
-            drankSet={drankSet}
-            onToggle={onToggle}
-            size="sm"
-            gap="2.5rem"
-          />
-
-          {/* Connector QF → SF left */}
-          <svg width="32" className="flex-shrink-0" style={{ height: `${qfLeft.length * 8}rem` }}>
-            {[0, 1].map(i => {
-              const pairTop = i * 2 * 128 + 64
-              const pairBot = pairTop + 128
-              const midY    = (pairTop + pairBot) / 2
-              return (
-                <g key={i}>
-                  <line x1="0" y1={pairTop} x2="16" y2={pairTop} stroke="rgba(255,255,255,0.15)" strokeWidth="1" />
-                  <line x1="0" y1={pairBot} x2="16" y2={pairBot} stroke="rgba(255,255,255,0.15)" strokeWidth="1" />
-                  <line x1="16" y1={pairTop} x2="16" y2={pairBot} stroke="rgba(255,255,255,0.15)" strokeWidth="1" />
-                  <line x1="16" y1={midY} x2="32" y2={midY} stroke="rgba(255,255,255,0.15)" strokeWidth="1" />
-                </g>
-              )
-            })}
-          </svg>
-
-          {/* LEFT: SF */}
-          <RoundColumn
-            label="Semi-Finals"
-            slots={sfLeft}
-            mode={mode}
-            drankSet={drankSet}
-            onToggle={onToggle}
-            size="md"
-            gap="6rem"
-          />
-
-          {/* Connector SF → Final left */}
-          <svg width="32" className="flex-shrink-0" style={{ height: `${sfLeft.length * 16}rem` }}>
-            {[0, 1].map(i => {
-              const y = i === 0 ? 64 : (sfLeft.length * 256) - 64
-              const midY = (sfLeft.length * 256) / 2
-              return (
-                <g key={i}>
-                  <line x1="0" y1={y} x2="16" y2={y} stroke="rgba(255,255,255,0.15)" strokeWidth="1" />
-                  <line x1="16" y1={i === 0 ? y : midY} x2="16" y2={i === 0 ? midY : y} stroke="rgba(255,255,255,0.15)" strokeWidth="1" />
-                  {i === 1 && <line x1="16" y1={midY} x2="32" y2={midY} stroke="rgba(255,255,255,0.15)" strokeWidth="1" />}
-                </g>
-              )
-            })}
-          </svg>
+          {/* LEFT half */}
+          {columns.map((col, ci) => (
+            <div key={`L-${col.id}`} className="flex items-start">
+              <div className="flex flex-col items-center">
+                <ColHeader label={col.label} />
+                <Column slots={halves[ci][0]} depth={ci} width={widths[ci]} tall={col.id === 'sf'} />
+              </div>
+              <Connector depth={ci} side="left" />
+            </div>
+          ))}
 
           {/* FINAL */}
           <div className="flex flex-col items-center flex-shrink-0">
-            <div className="text-[10px] font-bold uppercase tracking-widest text-yellow-400/70 mb-3 text-center">
-              🏆 Final · Jul 19
-            </div>
-            <MatchCard
-              slot={finalSlot}
-              mode={mode}
-              drankSet={drankSet}
-              onToggle={onToggle}
-              size="lg"
-            />
-            <div className="mt-4 text-center">
-              <div className="font-['Bebas_Neue'] text-yellow-400 text-lg tracking-wider">
-                MetLife Stadium
+            <ColHeader label="🏆 Final · Jul 19" />
+            <div className="relative w-52" style={{ height: HALF_H }}>
+              <div className="absolute left-0 right-0 flex justify-center" style={{ top: HALF_H / 2 - CARD_H_LG / 2 }}>
+                <Card slot={final} height={CARD_H_LG} showDrink />
               </div>
-              <div className="text-white/30 text-[10px]">East Rutherford, NJ</div>
             </div>
           </div>
 
-          {/* Connector Final → SF right */}
-          <svg width="32" className="flex-shrink-0" style={{ height: `${sfRight.length * 16}rem` }}>
-            {[0, 1].map(i => {
-              const y = i === 0 ? 64 : (sfRight.length * 256) - 64
-              const midY = (sfRight.length * 256) / 2
-              return (
-                <g key={i}>
-                  {i === 0 && <line x1="0" y1={midY} x2="16" y2={midY} stroke="rgba(255,255,255,0.15)" strokeWidth="1" />}
-                  <line x1="16" y1={i === 0 ? midY : y} x2="16" y2={i === 0 ? y : midY} stroke="rgba(255,255,255,0.15)" strokeWidth="1" />
-                  <line x1="16" y1={y} x2="32" y2={y} stroke="rgba(255,255,255,0.15)" strokeWidth="1" />
-                </g>
-              )
-            })}
-          </svg>
+          {/* RIGHT half (mirrored) */}
+          {[...columns].reverse().map((col, ri) => {
+            const ci = columns.length - 1 - ri
+            return (
+              <div key={`R-${col.id}`} className="flex items-start">
+                {ci === columns.length - 1
+                  ? <StraightConnector />
+                  : <Connector depth={ci} side="right" />}
+                <div className="flex flex-col items-center">
+                  <ColHeader label={col.label} />
+                  <Column slots={halves[ci][1]} depth={ci} width={widths[ci]} tall={col.id === 'sf'} />
+                </div>
+              </div>
+            )
+          })}
 
-          {/* RIGHT: SF */}
-          <RoundColumn
-            label="Semi-Finals"
-            slots={sfRight}
-            mode={mode}
-            drankSet={drankSet}
-            onToggle={onToggle}
-            size="md"
-            gap="6rem"
-          />
+        </div>
 
-          {/* Connector SF → QF right */}
-          <svg width="32" className="flex-shrink-0" style={{ height: `${qfRight.length * 8}rem` }}>
-            {[0, 1].map(i => {
-              const pairTop = i * 2 * 128 + 64
-              const pairBot = pairTop + 128
-              const midY    = (pairTop + pairBot) / 2
-              return (
-                <g key={i}>
-                  <line x1="0" y1={midY} x2="16" y2={midY} stroke="rgba(255,255,255,0.15)" strokeWidth="1" />
-                  <line x1="16" y1={pairTop} x2="16" y2={pairBot} stroke="rgba(255,255,255,0.15)" strokeWidth="1" />
-                  <line x1="16" y1={pairTop} x2="32" y2={pairTop} stroke="rgba(255,255,255,0.15)" strokeWidth="1" />
-                  <line x1="16" y1={pairBot} x2="32" y2={pairBot} stroke="rgba(255,255,255,0.15)" strokeWidth="1" />
-                </g>
-              )
-            })}
-          </svg>
-
-          {/* RIGHT: QF */}
-          <RoundColumn
-            label="Quarter-Finals"
-            slots={qfRight}
-            mode={mode}
-            drankSet={drankSet}
-            onToggle={onToggle}
-            size="sm"
-            gap="2.5rem"
-          />
-
-          {/* Connector QF → R16 right */}
-          <svg width="32" className="flex-shrink-0" style={{ height: `${r16Right.length * 4.5}rem` }}>
-            {[0, 1, 2, 3].map(i => {
-              const pairTop  = i * 2 * 72 + 36
-              const pairBot  = pairTop + 72
-              const midY     = (pairTop + pairBot) / 2
-              return (
-                <g key={i}>
-                  <line x1="0" y1={midY} x2="16" y2={midY} stroke="rgba(255,255,255,0.15)" strokeWidth="1" />
-                  <line x1="16" y1={pairTop} x2="16" y2={pairBot} stroke="rgba(255,255,255,0.15)" strokeWidth="1" />
-                  <line x1="16" y1={pairTop} x2="32" y2={pairTop} stroke="rgba(255,255,255,0.15)" strokeWidth="1" />
-                  <line x1="16" y1={pairBot} x2="32" y2={pairBot} stroke="rgba(255,255,255,0.15)" strokeWidth="1" />
-                </g>
-              )
-            })}
-          </svg>
-
-          {/* RIGHT: R16 */}
-          <RoundColumn
-            label="Round of 16"
-            slots={r16Right}
-            mode={mode}
-            drankSet={drankSet}
-            onToggle={onToggle}
-            size="sm"
-            gap="0.75rem"
-          />
-
+        {/* Third-place + venue */}
+        <div className="flex flex-col items-center gap-4 mt-2">
+          <div className="text-center">
+            <div className="font-['Bebas_Neue'] text-yellow-400 text-lg tracking-wider">MetLife Stadium</div>
+            <div className="text-white/30 text-[10px]">East Rutherford, NJ</div>
+          </div>
+          <div className="flex flex-col items-center">
+            <div className="text-[10px] font-bold uppercase tracking-widest text-white/40 mb-2">🥉 Third-Place Play-off · Jul 18</div>
+            <div className="w-52">
+              <Card slot={third} height={CARD_H_LG} showDrink />
+            </div>
+          </div>
         </div>
 
         {/* Key */}
@@ -473,12 +296,12 @@ export default function Bracket({ mode, knockoutGames, drankSet, onToggle }: Pro
             Live
           </div>
           <div className="flex items-center gap-1.5 text-[10px] text-white/30">
-            <div className="w-3 h-3 border border-white/15 rounded bg-white/3" />
-            TBD — group stage in progress
+            <div className="w-3 h-3 border border-white/12 rounded bg-white/4" />
+            TBD — awaiting earlier rounds
           </div>
           <div className="flex items-center gap-1.5 text-[10px] text-white/30">
             <span>🥃</span>
-            Tap to mark drink
+            Tap a winner to mark your drink
           </div>
         </div>
       </div>
