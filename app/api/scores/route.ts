@@ -58,6 +58,31 @@ function isPlaceholder(name: string): boolean {
   return /^[123][A-L]|^W\d+|^L\d+/.test(name)
 }
 
+// First FIFA match number of each knockout round. Matches within a round are
+// listed in match-number order in the source feed, so we number them by their
+// index within the round. This gives every knockout fixture a stable slot id
+// that survives placeholder → real-team resolution (see lib/bracket.ts).
+const KO_ROUND_BASE: Record<string, number> = {
+  'Round of 32': 73,
+  'Round of 16': 89,
+  'Quarter-final': 97,
+  'Semi-final': 101,
+  'Match for third place': 103,
+  'Final': 104,
+}
+
+// Assign FIFA match numbers to knockout games, in source order per round.
+function assignKnockoutNumbers(games: Game[]): void {
+  const seen: Record<string, number> = {}
+  for (const g of games) {
+    const base = g.round ? KO_ROUND_BASE[g.round] : undefined
+    if (base === undefined) continue
+    const offset = seen[g.round!] ?? 0
+    g.num = base + offset
+    seen[g.round!] = offset + 1
+  }
+}
+
 function toAbbr(name: string): string | undefined {
   if (isPlaceholder(name)) return undefined
   return NAME_MAP[name] ?? name.substring(0, 3).toUpperCase()
@@ -79,7 +104,7 @@ interface RawMatch {
   time?: string
   team1: string
   team2: string
-  score?: { ft?: number[] }
+  score?: { ft?: number[]; et?: number[]; p?: number[] }
   group?: string
   round?: string
   ground?: string
@@ -201,6 +226,10 @@ export async function GET() {
 
     const games: Game[] = rawMatches.map((m) => {
       const hasFT = Array.isArray(m.score?.ft)
+      // Displayed score is after extra time when it was played; penalties (knockout
+      // draws) are kept separate so the bracket can resolve the actual winner.
+      const finalScore = m.score?.et ?? m.score?.ft
+      const pens = m.score?.p
       const kickoff = parseKickoff(m.date, m.time ?? '20:00 UTC-4')
       const venue = m.ground ? cleanVenue(m.ground) : undefined
 
@@ -209,8 +238,10 @@ export async function GET() {
         away:          toAbbr(m.team2),
         homePlaceholder: isPlaceholder(m.team1) ? m.team1 : undefined,
         awayPlaceholder: isPlaceholder(m.team2) ? m.team2 : undefined,
-        hs:            hasFT ? (m.score!.ft![0] ?? 0) : 0,
-        as:            hasFT ? (m.score!.ft![1] ?? 0) : 0,
+        hs:            hasFT ? (finalScore?.[0] ?? 0) : 0,
+        as:            hasFT ? (finalScore?.[1] ?? 0) : 0,
+        homePens:      Array.isArray(pens) ? pens[0] : undefined,
+        awayPens:      Array.isArray(pens) ? pens[1] : undefined,
         status:        hasFT ? 'final' : 'scheduled',
         kickoff,
         // date/time are placeholders; the client overwrites them with values
@@ -223,6 +254,10 @@ export async function GET() {
         city:          venue?.city,
       }
     })
+
+    // Number knockout fixtures while still in source (match-number) order, so the
+    // bracket can key each game to a fixed slot regardless of kickoff-time sorting.
+    assignKnockoutNumbers(games)
 
     // Overlay live in-play scores from football-data.org (no-op without an API key).
     await applyLiveOverlay(games, new Set(TEAMS.map(t => t.abbr)))
