@@ -97,7 +97,7 @@ export default function PullToRefresh({
         >
           <div
             ref={spinRef}
-            className={`w-7 h-7 rounded-full border-2 border-white/25 border-t-yellow-400 ${refreshing ? 'animate-spin' : ''}`}
+            className={`w-7 h-7 rounded-full border-2 border-border border-t-accent ${refreshing ? 'animate-spin' : ''}`}
             style={{ opacity: 0 }}
           />
         </div>

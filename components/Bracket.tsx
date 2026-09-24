@@ -1,6 +1,7 @@
 'use client'
 import { Mode, Game } from '@/lib/types'
-import { TEAMS, MODE_META } from '@/lib/teams'
+import { Icon } from '@misterbeardy/design-system'
+import { TEAMS } from '@/lib/teams'
 import { buildBracket, KoSlot } from '@/lib/bracket'
 import DrinkLink from './DrinkLink'
 
@@ -21,7 +22,7 @@ const PITCH = 76         // centre-to-centre spacing of Round-of-32 cards
 const HALF_H = PITCH * 8 // height of one half of the bracket (8 R32 leaves)
 const LABEL_H = 28       // column-header height, kept uniform so rows align
 const CONN_W = 26        // connector column width
-const LINE = 'rgba(255,255,255,0.15)'
+const LINE = 'var(--border)'
 
 const half = <T,>(arr: T[]): [T[], T[]] => {
   const mid = arr.length / 2
@@ -51,7 +52,7 @@ export default function Bracket({ mode, knockoutGames, drankSet, onToggle }: Pro
     if (!team) {
       return (
         <div className="flex-1 flex items-center px-2 min-h-0">
-          <span className="text-white/25 text-[9px] font-bold uppercase tracking-wide truncate">
+          <span className="num text-muted text-[10px] uppercase tracking-wide truncate">
             {label || 'TBD'}
           </span>
         </div>
@@ -64,22 +65,21 @@ export default function Bracket({ mode, knockoutGames, drankSet, onToggle }: Pro
     return (
       <div className={[
         'flex-1 flex items-center gap-1.5 px-2 min-h-0',
-        won ? 'bg-yellow-400/10' : '',
         hasDrank ? 'opacity-50' : '',
       ].join(' ')}>
         <span className="text-sm leading-none flex-shrink-0">{team.flag}</span>
         <div className="flex-1 min-w-0">
-          <div className={`text-[11px] font-bold leading-tight truncate ${won ? 'text-yellow-300' : 'text-white/80'}`}>
+          <div className={`text-[11px] leading-tight truncate ${won ? 'font-bold' : 'text-muted'}`}>
             {team.name}
           </div>
           {showDrink && drink && (
-            <div className={`text-[9px] leading-tight truncate ${MODE_META[mode].textSoft}`}>
+            <div className="text-[10px] leading-tight truncate">
               <DrinkLink drink={drink} />
             </div>
           )}
         </div>
         {score !== undefined && (
-          <span className={`font-['Bebas_Neue'] text-sm leading-none flex-shrink-0 ${won ? 'text-yellow-300' : 'text-white/50'}`}>
+          <span className={`num text-xs leading-none flex-shrink-0 ${won ? 'font-bold' : 'text-muted'}`}>
             {score}
             {pens !== undefined && <span className="text-[9px] align-top ml-0.5 opacity-70">({pens})</span>}
           </span>
@@ -88,18 +88,20 @@ export default function Bracket({ mode, knockoutGames, drankSet, onToggle }: Pro
           <button
             onClick={() => onToggle(abbr)}
             title="Mark as drank"
-            className="text-[9px] bg-yellow-400/20 hover:bg-yellow-400/40 border border-yellow-400/40 text-yellow-300 rounded px-1 leading-none flex-shrink-0 transition-colors"
+            aria-label={`Mark ${team.name} as drank`}
+            className="grid place-items-center w-4 h-4 rounded-sm bg-accent-soft text-accent-text flex-shrink-0"
           >
-            🥃
+            <Icon name="plus" size={10} />
           </button>
         )}
         {hasDrank && (
           <button
             onClick={() => abbr && onToggle(abbr)}
-            title="Undo"
-            className="text-[9px] text-orange-400 flex-shrink-0"
+            title="Drank — tap to undo"
+            aria-label="Drank — tap to undo"
+            className="text-success-text flex-shrink-0"
           >
-            ✓
+            <Icon name="check" size={12} />
           </button>
         )}
       </div>
@@ -113,13 +115,13 @@ export default function Bracket({ mode, knockoutGames, drankSet, onToggle }: Pro
       <div
         style={{ height }}
         className={[
-          'w-full border rounded-lg overflow-hidden flex flex-col relative',
-          isLive ? 'border-red-500/50 bg-red-950/20' :
-          isFinal ? 'border-yellow-400/30 bg-yellow-950/10' :
-                    'border-white/12 bg-white/4',
+          'w-full border rounded-[var(--radius-md)] overflow-hidden flex flex-col relative',
+          isLive ? 'border-danger bg-surface' :
+          isFinal ? 'border-border bg-surface' :
+                    'border-border border-dashed bg-surface-alt',
         ].join(' ')}
       >
-        {isLive && <span className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />}
+        {isLive && <span className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-danger animate-pulse" />}
         <TeamRow
           abbr={slot.homeAbbr}
           label={slot.homeLabel}
@@ -128,7 +130,7 @@ export default function Bracket({ mode, knockoutGames, drankSet, onToggle }: Pro
           won={slot.winnerAbbr != null && slot.winnerAbbr === slot.homeAbbr}
           showDrink={showDrink}
         />
-        <div className="border-t border-white/8" />
+        <div className="border-t border-border" />
         <TeamRow
           abbr={slot.awayAbbr}
           label={slot.awayLabel}
@@ -205,7 +207,7 @@ export default function Bracket({ mode, knockoutGames, drankSet, onToggle }: Pro
   function ColHeader({ label }: { label: string }) {
     return (
       <div
-        className="text-[10px] font-bold uppercase tracking-widest text-yellow-400/70 text-center whitespace-nowrap flex items-center justify-center"
+        className="num text-[10px] uppercase tracking-widest text-muted text-center whitespace-nowrap flex items-center justify-center"
         style={{ height: LABEL_H }}
       >
         {label}
@@ -221,10 +223,10 @@ export default function Bracket({ mode, knockoutGames, drankSet, onToggle }: Pro
       <div className="min-w-[1620px] px-4 py-6">
         {/* Title */}
         <div className="text-center mb-6">
-          <h2 className="font-['Bebas_Neue'] text-3xl tracking-widest text-yellow-400">
-            ⚽ Knockout Bracket
+          <h2 className="text-2xl font-bold">
+            Knockout bracket
           </h2>
-          <p className="text-white/30 text-xs mt-1">
+          <p className="text-muted text-xs mt-1">
             Fills in automatically as each match finishes · Jul 4 – Jul 19
           </p>
         </div>
@@ -245,7 +247,7 @@ export default function Bracket({ mode, knockoutGames, drankSet, onToggle }: Pro
 
           {/* FINAL */}
           <div className="flex flex-col items-center flex-shrink-0">
-            <ColHeader label="🏆 Final · Jul 19" />
+            <ColHeader label="Final · Jul 19" />
             <div className="relative w-52" style={{ height: HALF_H }}>
               <div className="absolute left-0 right-0 flex justify-center" style={{ top: HALF_H / 2 - CARD_H_LG / 2 }}>
                 <Card slot={final} height={CARD_H_LG} showDrink />
@@ -274,11 +276,11 @@ export default function Bracket({ mode, knockoutGames, drankSet, onToggle }: Pro
         {/* Third-place + venue */}
         <div className="flex flex-col items-center gap-4 mt-2">
           <div className="text-center">
-            <div className="font-['Bebas_Neue'] text-yellow-400 text-lg tracking-wider">MetLife Stadium</div>
-            <div className="text-white/30 text-[10px]">East Rutherford, NJ</div>
+            <div className="font-semibold">MetLife Stadium</div>
+            <div className="text-muted text-[11px]">East Rutherford, NJ</div>
           </div>
           <div className="flex flex-col items-center">
-            <div className="text-[10px] font-bold uppercase tracking-widest text-white/40 mb-2">🥉 Third-Place Play-off · Jul 18</div>
+            <div className="num text-[10px] uppercase tracking-widest text-muted mb-2">Third-place play-off · Jul 18</div>
             <div className="w-52">
               <Card slot={third} height={CARD_H_LG} showDrink />
             </div>
@@ -287,21 +289,21 @@ export default function Bracket({ mode, knockoutGames, drankSet, onToggle }: Pro
 
         {/* Key */}
         <div className="flex items-center justify-center gap-6 mt-8 flex-wrap">
-          <div className="flex items-center gap-1.5 text-[10px] text-white/30">
-            <div className="w-3 h-3 border border-yellow-400/40 rounded bg-yellow-950/20" />
+          <div className="flex items-center gap-1.5 text-[11px] text-muted">
+            <div className="w-3 h-3 border border-border rounded-sm bg-surface" />
             Final result
           </div>
-          <div className="flex items-center gap-1.5 text-[10px] text-white/30">
-            <div className="w-3 h-3 border border-red-500/40 rounded bg-red-950/20" />
+          <div className="flex items-center gap-1.5 text-[11px] text-muted">
+            <div className="w-3 h-3 border border-danger rounded-sm bg-surface" />
             Live
           </div>
-          <div className="flex items-center gap-1.5 text-[10px] text-white/30">
-            <div className="w-3 h-3 border border-white/12 rounded bg-white/4" />
+          <div className="flex items-center gap-1.5 text-[11px] text-muted">
+            <div className="w-3 h-3 border border-dashed border-border rounded-sm bg-surface-alt" />
             TBD — awaiting earlier rounds
           </div>
-          <div className="flex items-center gap-1.5 text-[10px] text-white/30">
-            <span>🥃</span>
-            Tap a winner to mark your drink
+          <div className="flex items-center gap-1.5 text-[11px] text-muted">
+            <span className="grid place-items-center w-4 h-4 rounded-sm bg-accent-soft text-accent-text"><Icon name="plus" size={10} /></span>
+            Tap to mark your drink
           </div>
         </div>
       </div>
