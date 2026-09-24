@@ -175,7 +175,7 @@ export default function GamePage() {
       <header className="text-center px-4 pt-8 pb-5">
         <div className="num text-[11px] tracking-[0.2em] text-accent-text uppercase mb-2">2026 FIFA World Cup — Live</div>
         <h1 className="text-6xl sm:text-7xl font-bold tracking-tight leading-none">
-          DRINK<span className="text-accent-text">&amp;</span>WIN
+          WIN<span className="text-accent-text">&amp;</span>DRINK
         </h1>
         <p className="text-sm text-muted mt-3 max-w-md mx-auto">
           Winners auto-highlight. Tap their button to confirm you drank the shot.
