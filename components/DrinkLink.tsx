@@ -13,7 +13,7 @@ export default function DrinkLink({ drink, className = '' }: Props) {
       target="_blank"
       rel="noopener noreferrer"
       onClick={e => e.stopPropagation()}
-      className={`border-b border-dashed border-current/40 hover:border-current/80 transition-opacity hover:opacity-80 ${className}`}
+      className={`text-accent-text underline decoration-dotted decoration-1 underline-offset-2 hover:decoration-solid ${className}`}
     >
       {drink.drink}
     </a>
