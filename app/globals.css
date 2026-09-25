@@ -72,3 +72,19 @@ body {
 * {
   box-sizing: border-box;
 }
+
+/* Bracket winner rows are drawn 28px tall inside a 58px card. On a touch
+   screen the tap area grows to 44px, reaching 8px past the row: outward into
+   the gap between cards (18px at its tightest) and inward over the other
+   row, which never takes taps itself. */
+@media (pointer: coarse) {
+  .bracket-hit::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 50%;
+    height: max(100%, 44px);
+    transform: translateY(-50%);
+  }
+}

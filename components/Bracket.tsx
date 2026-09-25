@@ -39,6 +39,7 @@ export default function Bracket({ mode, knockoutGames, drankSet, onToggle }: Pro
     pens,
     won,
     showDrink,
+    edge,
   }: {
     abbr?: string
     label: string
@@ -46,6 +47,7 @@ export default function Bracket({ mode, knockoutGames, drankSet, onToggle }: Pro
     pens?: number
     won: boolean
     showDrink: boolean
+    edge: 'top' | 'bottom'
   }) {
     const team = teamByAbbr(abbr)
 
@@ -61,49 +63,61 @@ export default function Bracket({ mode, knockoutGames, drankSet, onToggle }: Pro
 
     const drink = team[mode]
     const hasDrank = abbr ? drankSet.has(abbr) : false
+    // Only the winner's row takes taps: the whole row marks (or un-marks) the
+    // drink, so the target is the row, not the small glyph at its end.
+    const tappable = won && !!abbr
 
     return (
       <div className={[
-        'flex-1 flex items-center gap-1.5 px-2 min-h-0',
+        // pointer-events-none: a positioned row would otherwise sit over the
+        // other row's enlarged tap area and swallow its taps.
+        'relative flex-1 flex items-center min-h-0 pointer-events-none',
         hasDrank ? 'opacity-50' : '',
       ].join(' ')}>
-        <span className="text-sm leading-none flex-shrink-0">{team.flag}</span>
-        <div className="flex-1 min-w-0">
-          <div className={`text-[11px] leading-tight truncate ${won ? 'font-bold' : 'text-muted'}`}>
-            {team.name}
-          </div>
-          {showDrink && drink && (
-            <div className="text-[10px] leading-tight truncate">
-              <DrinkLink drink={drink} />
-            </div>
-          )}
-        </div>
-        {score !== undefined && (
-          <span className={`num text-xs leading-none flex-shrink-0 ${won ? 'font-bold' : 'text-muted'}`}>
-            {score}
-            {pens !== undefined && <span className="text-[9px] align-top ml-0.5 opacity-70">({pens})</span>}
-          </span>
-        )}
-        {won && abbr && !hasDrank && (
+        {tappable && (
           <button
             onClick={() => onToggle(abbr)}
-            title="Mark as drank"
+            title={hasDrank ? 'Drank — tap to undo' : 'Mark as drank'}
             aria-label={`Mark ${team.name} as drank`}
-            className="grid place-items-center w-4 h-4 rounded-sm bg-accent-soft text-accent-text flex-shrink-0"
-          >
-            <Icon name="plus" size={10} />
-          </button>
+            aria-pressed={hasDrank}
+            className={[
+              'bracket-hit absolute inset-0 pointer-events-auto hover:bg-surface-alt',
+              'focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent',
+              edge === 'top'
+                ? 'rounded-t-[calc(var(--radius-md)-1px)]'
+                : 'rounded-b-[calc(var(--radius-md)-1px)]',
+            ].join(' ')}
+          />
         )}
-        {hasDrank && (
-          <button
-            onClick={() => abbr && onToggle(abbr)}
-            title="Drank — tap to undo"
-            aria-label="Drank — tap to undo"
-            className="text-success-text flex-shrink-0"
-          >
-            <Icon name="check" size={12} />
-          </button>
-        )}
+        <div className="relative flex-1 min-w-0 flex items-center gap-1.5 px-2">
+          <span className="text-sm leading-none flex-shrink-0">{team.flag}</span>
+          <div className="flex-1 min-w-0">
+            <div className={`text-[11px] leading-tight truncate ${won ? 'font-bold' : 'text-muted'}`}>
+              {team.name}
+            </div>
+            {showDrink && drink && (
+              <div className="text-[10px] leading-tight truncate">
+                <DrinkLink drink={drink} className="pointer-events-auto" />
+              </div>
+            )}
+          </div>
+          {score !== undefined && (
+            <span className={`num text-xs leading-none flex-shrink-0 ${won ? 'font-bold' : 'text-muted'}`}>
+              {score}
+              {pens !== undefined && <span className="text-[9px] align-top ml-0.5 opacity-70">({pens})</span>}
+            </span>
+          )}
+          {tappable && !hasDrank && (
+            <span className="grid place-items-center w-4 h-4 rounded-sm bg-accent-soft text-accent-text flex-shrink-0">
+              <Icon name="plus" size={10} />
+            </span>
+          )}
+          {hasDrank && (
+            <span className="text-success-text flex-shrink-0" aria-label="Drank" role="img">
+              <Icon name="check" size={12} />
+            </span>
+          )}
+        </div>
       </div>
     )
   }
@@ -115,7 +129,7 @@ export default function Bracket({ mode, knockoutGames, drankSet, onToggle }: Pro
       <div
         style={{ height }}
         className={[
-          'w-full border rounded-[var(--radius-md)] overflow-hidden flex flex-col relative',
+          'w-full border rounded-[var(--radius-md)] flex flex-col relative',
           isLive ? 'border-danger bg-surface' :
           isFinal ? 'border-border bg-surface' :
                     'border-border border-dashed bg-surface-alt',
@@ -129,6 +143,7 @@ export default function Bracket({ mode, knockoutGames, drankSet, onToggle }: Pro
           pens={slot.homePens}
           won={slot.winnerAbbr != null && slot.winnerAbbr === slot.homeAbbr}
           showDrink={showDrink}
+          edge="top"
         />
         <div className="border-t border-border" />
         <TeamRow
@@ -138,6 +153,7 @@ export default function Bracket({ mode, knockoutGames, drankSet, onToggle }: Pro
           pens={slot.awayPens}
           won={slot.winnerAbbr != null && slot.winnerAbbr === slot.awayAbbr}
           showDrink={showDrink}
+          edge="bottom"
         />
       </div>
     )
@@ -303,7 +319,7 @@ export default function Bracket({ mode, knockoutGames, drankSet, onToggle }: Pro
           </div>
           <div className="flex items-center gap-1.5 text-[11px] text-muted">
             <span className="grid place-items-center w-4 h-4 rounded-sm bg-accent-soft text-accent-text"><Icon name="plus" size={10} /></span>
-            Tap to mark your drink
+            Tap a winner to mark your drink
           </div>
         </div>
       </div>
