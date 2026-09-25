@@ -20,6 +20,9 @@ export type ScoresStatus = 'loading' | 'ready' | 'error'
 // Only show the loading skeleton if the first fetch takes longer than this, so
 // a fast load doesn't flash placeholders for a frame.
 const SKELETON_DELAY_MS = 300
+// A refresh that fails is a quiet line under the scores; once refreshes have
+// been failing this long, it becomes a Banner above them.
+const STALE_BANNER_AFTER_MS = 5 * 60 * 1000
 
 // Convert each game's canonical UTC kickoff into the viewer's local date + time.
 // Runs in the browser, so date/time always match the timezone of whoever is viewing.
@@ -47,7 +50,10 @@ export default function GamePage() {
   // loaded, 'ready' once we have scores (a later failed refresh keeps them).
   const [status, setStatus] = useState<ScoresStatus>('loading')
   const [showSkeleton, setShowSkeleton] = useState(false)
-  const [refreshFailed, setRefreshFailed] = useState(false)
+  // When refreshes started failing (null while the last one worked), and
+  // whether that has gone on long enough to show the Banner.
+  const [failingSince, setFailingSince] = useState<number | null>(null)
+  const [refreshStale, setRefreshStale] = useState(false)
   const [online, setOnline] = useState(true)
 
   // Resolve "today" in the browser's local timezone after mount (avoids any
@@ -75,20 +81,31 @@ export default function GamePage() {
       setGames(localizeGames(data.games ?? []))
       setFetchedAt(data.fetchedAt ?? new Date().toISOString())
       setStatus('ready')
-      setRefreshFailed(false)
+      setFailingSince(null)
     } catch (err) {
       console.error(err)
       // Keep scores we already have; only an empty page becomes an error.
       setStatus(prev => (prev === 'ready' ? 'ready' : 'error'))
-      setRefreshFailed(true)
+      setFailingSince(prev => prev ?? Date.now())
     }
   }, [])
 
-  // Try again from the error state: back to loading while it runs.
+  // Try again: from the error state, back to loading while it runs; with
+  // scores already showing, keep them up while it runs.
   const retryScores = useCallback(() => {
-    setStatus('loading')
+    setStatus(prev => (prev === 'ready' ? 'ready' : 'loading'))
     return fetchScores()
   }, [fetchScores])
+
+  useEffect(() => {
+    if (failingSince === null) {
+      setRefreshStale(false)
+      return
+    }
+    const wait = failingSince + STALE_BANNER_AFTER_MS - Date.now()
+    const timer = setTimeout(() => setRefreshStale(true), Math.max(0, wait))
+    return () => clearTimeout(timer)
+  }, [failingSince])
 
   useEffect(() => {
     if (status !== 'loading') {
@@ -285,7 +302,8 @@ export default function GamePage() {
         fetchedAt={fetchedAt}
         status={status}
         showSkeleton={showSkeleton}
-        refreshFailed={refreshFailed && online}
+        refreshFailed={failingSince !== null && online}
+        refreshStale={refreshStale && online}
         onRetry={retryScores}
       />
 

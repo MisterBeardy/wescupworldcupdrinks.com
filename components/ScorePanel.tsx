@@ -1,7 +1,7 @@
 'use client'
 import { useState } from 'react'
 import { Game, Mode } from '@/lib/types'
-import { Chip, ErrorState, Group, Segmented, Skeleton } from '@misterbeardy/design-system'
+import { Banner, Button, Chip, ErrorState, Group, Segmented, Skeleton } from '@misterbeardy/design-system'
 import { teamByAbbr } from '@/lib/teams'
 import DrinkLink from './DrinkLink'
 import type { ScoresStatus } from './GamePage'
@@ -15,6 +15,7 @@ interface Props {
   status: ScoresStatus
   showSkeleton: boolean   // loading has taken long enough to show placeholders
   refreshFailed: boolean  // the last refresh failed but earlier scores are still shown
+  refreshStale: boolean   // refreshes have been failing for 5 minutes or more
   onRetry: () => void
 }
 
@@ -122,7 +123,7 @@ function GameCard({ g, mode }: { g: Game; mode: Mode }) {
   )
 }
 
-export default function ScorePanel({ games, mode, drankSet, today, fetchedAt, status, showSkeleton, refreshFailed, onRetry }: Props) {
+export default function ScorePanel({ games, mode, drankSet, today, fetchedAt, status, showSkeleton, refreshFailed, refreshStale, onRetry }: Props) {
   const [tab, setTab] = useState<'today' | 'upcoming'>('today')
 
   const todayGames     = games.filter(g => g.date === today)
@@ -179,6 +180,19 @@ export default function ScorePanel({ games, mode, drankSet, today, fetchedAt, st
 
   return (
     <div className="border-y border-border bg-surface-alt">
+      {/* Refreshes failing for a while */}
+      {status === 'ready' && refreshStale && fmtTime && (
+        <div className="max-w-xl mx-auto px-4 pt-4">
+          <Banner
+            tone="danger"
+            title="Scores aren't updating"
+            action={<Button variant="secondary" size="sm" onClick={onRetry}>Try again</Button>}
+          >
+            These are from <span className="num">{fmtTime}</span>. We&apos;ll keep trying every 60s.
+          </Banner>
+        </div>
+      )}
+
       {/* Tabs */}
       <div className="flex justify-center px-4 pt-4">
         <Segmented
