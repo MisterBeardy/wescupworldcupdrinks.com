@@ -6,7 +6,7 @@ import TeamCard from '@/components/TeamCard'
 import ScorePanel from '@/components/ScorePanel'
 import Bracket from '@/components/Bracket'
 import PullToRefresh from '@/components/PullToRefresh'
-import { Button, Chip, Group, Input, Segmented, StatStrip } from '@misterbeardy/design-system'
+import { Banner, Button, Chip, Group, Input, Segmented, StatStrip } from '@misterbeardy/design-system'
 
 const DRANK_KEY = 'wc2026_drank_v3'
 const GROUPS = ['A','B','C','D','E','F','G','H','I','J','K','L']
@@ -15,6 +15,14 @@ const KNOCKOUT_ROUNDS = new Set([
 ])
 
 type View = 'groups' | 'bracket'
+export type ScoresStatus = 'loading' | 'ready' | 'error'
+
+// Only show the loading skeleton if the first fetch takes longer than this, so
+// a fast load doesn't flash placeholders for a frame.
+const SKELETON_DELAY_MS = 300
+// A refresh that fails is a quiet line under the scores; once refreshes have
+// been failing this long, it becomes a Banner above them.
+const STALE_BANNER_AFTER_MS = 5 * 60 * 1000
 
 // Convert each game's canonical UTC kickoff into the viewer's local date + time.
 // Runs in the browser, so date/time always match the timezone of whoever is viewing.
@@ -38,6 +46,15 @@ export default function GamePage() {
   const [search, setSearch] = useState('')
   const [view, setView] = useState<View>('groups')
   const [today, setToday] = useState('')
+  // 'loading' until the first fetch settles, 'error' if no scores could be
+  // loaded, 'ready' once we have scores (a later failed refresh keeps them).
+  const [status, setStatus] = useState<ScoresStatus>('loading')
+  const [showSkeleton, setShowSkeleton] = useState(false)
+  // When refreshes started failing (null while the last one worked), and
+  // whether that has gone on long enough to show the Banner.
+  const [failingSince, setFailingSince] = useState<number | null>(null)
+  const [refreshStale, setRefreshStale] = useState(false)
+  const [online, setOnline] = useState(true)
 
   // Resolve "today" in the browser's local timezone after mount (avoids any
   // server/client timezone mismatch during hydration).
@@ -53,15 +70,68 @@ export default function GamePage() {
     } catch {}
   }, [])
 
-  // Fetch scores
+  // Fetch scores. The route answers 200 with `error` set when its upstream
+  // source fails, so that counts as a failure too.
   const fetchScores = useCallback(async () => {
     try {
       const res = await fetch('/api/scores')
+      if (!res.ok) throw new Error(`Scores request failed: ${res.status}`)
       const data = await res.json()
+      if (data.error) throw new Error(`Scores source failed: ${data.error}`)
       setGames(localizeGames(data.games ?? []))
       setFetchedAt(data.fetchedAt ?? new Date().toISOString())
-    } catch {}
+      setStatus('ready')
+      setFailingSince(null)
+    } catch (err) {
+      console.error(err)
+      // Keep scores we already have; only an empty page becomes an error.
+      setStatus(prev => (prev === 'ready' ? 'ready' : 'error'))
+      setFailingSince(prev => prev ?? Date.now())
+    }
   }, [])
+
+  // Try again: from the error state, back to loading while it runs; with
+  // scores already showing, keep them up while it runs.
+  const retryScores = useCallback(() => {
+    setStatus(prev => (prev === 'ready' ? 'ready' : 'loading'))
+    return fetchScores()
+  }, [fetchScores])
+
+  useEffect(() => {
+    if (failingSince === null) {
+      setRefreshStale(false)
+      return
+    }
+    const wait = failingSince + STALE_BANNER_AFTER_MS - Date.now()
+    const timer = setTimeout(() => setRefreshStale(true), Math.max(0, wait))
+    return () => clearTimeout(timer)
+  }, [failingSince])
+
+  useEffect(() => {
+    if (status !== 'loading') {
+      setShowSkeleton(false)
+      return
+    }
+    const timer = setTimeout(() => setShowSkeleton(true), SKELETON_DELAY_MS)
+    return () => clearTimeout(timer)
+  }, [status])
+
+  // Track connectivity: a warning Banner while offline, and a refetch the
+  // moment the connection comes back.
+  useEffect(() => {
+    setOnline(navigator.onLine)
+    const goOnline = () => {
+      setOnline(true)
+      fetchScores()
+    }
+    const goOffline = () => setOnline(false)
+    window.addEventListener('online', goOnline)
+    window.addEventListener('offline', goOffline)
+    return () => {
+      window.removeEventListener('online', goOnline)
+      window.removeEventListener('offline', goOffline)
+    }
+  }, [fetchScores])
 
   // Manual refresh (pull-to-refresh): re-resolve today + refetch scores.
   const handleRefresh = useCallback(() => {
@@ -152,6 +222,9 @@ export default function GamePage() {
 
   // Stats
   const todayWinCount = games.filter(g => g.date === today && g.status === 'final' && g.hs !== g.as).length
+  // Score-derived stats have no value until scores load; don't show a false 0.
+  const scoreStat = (n: number | string) => (status === 'ready' ? n : '—')
+  const fmtFetched = fetchedAt ? new Date(fetchedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''
 
   // Filtered teams
   const filteredTeams = TEAMS.filter(t => {
@@ -171,6 +244,17 @@ export default function GamePage() {
     <PullToRefresh onRefresh={handleRefresh}>
     <div className="min-h-screen bg-bg text-ink">
 
+      {/* Offline */}
+      {!online && (
+        <div className="max-w-xl mx-auto px-4 pt-4">
+          <Banner tone="warning" title="You're offline">
+            {status === 'ready' && fmtFetched
+              ? <>Scores are from <span className="num">{fmtFetched}</span>. They&apos;ll update when you&apos;re back online.</>
+              : <>Scores will load when you&apos;re back online.</>}
+          </Banner>
+        </div>
+      )}
+
       {/* Header */}
       <header className="text-center px-4 pt-8 pb-5">
         <div className="num text-[11px] tracking-[0.2em] text-accent-text uppercase mb-2">2026 FIFA World Cup — Live</div>
@@ -185,10 +269,10 @@ export default function GamePage() {
         <div className="max-w-xl mx-auto mt-5 text-left">
           <Group>
             <StatStrip stats={[
-              { label: 'Won today', value: todayWinCount, accent: true },
+              { label: 'Won today', value: scoreStat(todayWinCount), accent: true },
               { label: 'Shots drank', value: drankSet.size },
-              { label: 'Live now', value: liveSet.size || '—' },
-              { label: 'Finished', value: games.filter(g => g.status === 'final').length },
+              { label: 'Live now', value: scoreStat(liveSet.size || '—') },
+              { label: 'Finished', value: scoreStat(games.filter(g => g.status === 'final').length) },
             ]} />
           </Group>
         </div>
@@ -210,7 +294,18 @@ export default function GamePage() {
       </header>
 
       {/* Score panel */}
-      <ScorePanel games={games} mode={mode} drankSet={drankSet} today={today} fetchedAt={fetchedAt} />
+      <ScorePanel
+        games={games}
+        mode={mode}
+        drankSet={drankSet}
+        today={today}
+        fetchedAt={fetchedAt}
+        status={status}
+        showSkeleton={showSkeleton}
+        refreshFailed={failingSince !== null && online}
+        refreshStale={refreshStale && online}
+        onRetry={retryScores}
+      />
 
       {/* View toggle — Groups vs Bracket */}
       <div className="flex justify-center px-4 pt-6">

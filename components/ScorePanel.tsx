@@ -1,9 +1,10 @@
 'use client'
 import { useState } from 'react'
 import { Game, Mode } from '@/lib/types'
-import { Chip, Segmented } from '@misterbeardy/design-system'
+import { Banner, Button, Chip, ErrorState, Group, Segmented, Skeleton } from '@misterbeardy/design-system'
 import { teamByAbbr } from '@/lib/teams'
 import DrinkLink from './DrinkLink'
+import type { ScoresStatus } from './GamePage'
 
 interface Props {
   games: Game[]
@@ -11,6 +12,32 @@ interface Props {
   drankSet: Set<string>
   today: string           // YYYY-MM-DD in the viewer's local timezone
   fetchedAt: string
+  status: ScoresStatus
+  showSkeleton: boolean   // loading has taken long enough to show placeholders
+  refreshFailed: boolean  // the last refresh failed but earlier scores are still shown
+  refreshStale: boolean   // refreshes have been failing for 5 minutes or more
+  onRetry: () => void
+}
+
+// Stands in for either tab's content until scores have loaded: placeholders
+// while loading, or what went wrong with a way to try again.
+function ScoresPending({ status, showSkeleton, onRetry }: Pick<Props, 'status' | 'showSkeleton' | 'onRetry'>) {
+  return (
+    // Holds the skeleton's height from the start so the page doesn't jump.
+    <div className="max-w-xl mx-auto min-h-36">
+      {status === 'error' ? (
+        <Group>
+          <ErrorState title="Couldn't load scores" onRetry={onRetry}>
+            Check your connection. Your drinks are saved on this device.
+          </ErrorState>
+        </Group>
+      ) : showSkeleton && (
+        <Group>
+          <Skeleton count={3} label="Loading scores" />
+        </Group>
+      )}
+    </div>
+  )
 }
 
 // A single game card used in both Today and Upcoming tabs
@@ -96,7 +123,7 @@ function GameCard({ g, mode }: { g: Game; mode: Mode }) {
   )
 }
 
-export default function ScorePanel({ games, mode, drankSet, today, fetchedAt }: Props) {
+export default function ScorePanel({ games, mode, drankSet, today, fetchedAt, status, showSkeleton, refreshFailed, refreshStale, onRetry }: Props) {
   const [tab, setTab] = useState<'today' | 'upcoming'>('today')
 
   const todayGames     = games.filter(g => g.date === today)
@@ -153,6 +180,19 @@ export default function ScorePanel({ games, mode, drankSet, today, fetchedAt }: 
 
   return (
     <div className="border-y border-border bg-surface-alt">
+      {/* Refreshes failing for a while */}
+      {status === 'ready' && refreshStale && fmtTime && (
+        <div className="max-w-xl mx-auto px-4 pt-4">
+          <Banner
+            tone="danger"
+            title="Scores aren't updating"
+            action={<Button variant="secondary" size="sm" onClick={onRetry}>Try again</Button>}
+          >
+            These are from <span className="num">{fmtTime}</span>. We&apos;ll keep trying every 60s.
+          </Banner>
+        </div>
+      )}
+
       {/* Tabs */}
       <div className="flex justify-center px-4 pt-4">
         <Segmented
@@ -167,7 +207,13 @@ export default function ScorePanel({ games, mode, drankSet, today, fetchedAt }: 
       </div>
 
       {/* TODAY TAB */}
-      {tab === 'today' && (
+      {status !== 'ready' && (
+        <div className="p-4">
+          <ScoresPending status={status} showSkeleton={showSkeleton} onRetry={onRetry} />
+        </div>
+      )}
+
+      {tab === 'today' && status === 'ready' && (
         <div className="p-4 space-y-5">
           {!hasContent && (
             <p className="text-muted text-sm text-center">No games today — check Upcoming for the next matchday.</p>
@@ -242,14 +288,16 @@ export default function ScorePanel({ games, mode, drankSet, today, fetchedAt }: 
             </div>
           )}
 
-          {fmtTime && (
+          {fmtTime && (refreshFailed ? (
+            <p className="text-muted text-[11px] text-center">Couldn&apos;t refresh · showing scores from <span className="num">{fmtTime}</span> · trying again every 60s</p>
+          ) : (
             <p className="text-muted text-[11px] text-center">Updated <span className="num">{fmtTime}</span> · auto-refreshes every 60s</p>
-          )}
+          ))}
         </div>
       )}
 
       {/* UPCOMING TAB */}
-      {tab === 'upcoming' && (
+      {tab === 'upcoming' && status === 'ready' && (
         <div className="p-4 space-y-6">
           {Object.keys(byDay).length === 0 && (
             <p className="text-muted text-sm text-center">No upcoming games loaded yet.</p>
