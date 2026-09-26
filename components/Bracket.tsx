@@ -267,97 +267,100 @@ export default function Bracket({ mode, knockoutGames, status, showSkeleton, dra
   const halves = columns.map(c => half(c.slots))
 
   return (
-    <div className="w-full overflow-x-auto pb-8">
-      <div className="min-w-[1620px] px-4 py-6">
-        {/* Title */}
-        <div className="text-center mb-6">
-          <h2 className="text-2xl font-bold">
-            Knockout bracket
-          </h2>
-          <p className="text-muted text-xs mt-1">
-            {status === 'error'
-              ? 'Fills in once scores load · Jul 4 – Jul 19'
-              : 'Fills in automatically as each match finishes · Jul 4 – Jul 19'}
-          </p>
-          {pending && showSkeleton && (
-            <span role="status" className="ds-visually-hidden">Loading bracket</span>
-          )}
-        </div>
+    <div className="w-full pb-8">
+      {/* Title — outside the scrolling canvas so it centres on the viewport,
+          not on the 1620px bracket, at phone width. */}
+      <div className="text-center px-4 pt-6 mb-6">
+        <h2 className="text-2xl font-bold">
+          Knockout bracket
+        </h2>
+        <p className="text-muted text-xs mt-1">
+          {status === 'error'
+            ? 'Fills in once scores load · Jul 4 – Jul 19'
+            : 'Fills in automatically as each match finishes · Jul 4 – Jul 19'}
+        </p>
+        {pending && showSkeleton && (
+          <span role="status" className="ds-visually-hidden">Loading bracket</span>
+        )}
+      </div>
 
-        {/* Bracket: R32 → R16 → QF → SF → Final → SF → QF → R16 → R32 */}
-        <div className="flex items-start justify-center">
+      <div className="w-full overflow-x-auto">
+        <div className="min-w-[1620px] px-4">
+          {/* Bracket: R32 → R16 → QF → SF → Final → SF → QF → R16 → R32 */}
+          <div className="flex items-start justify-center">
 
-          {/* LEFT half */}
-          {columns.map((col, ci) => (
-            <div key={`L-${col.id}`} className="flex items-start">
-              <div className="flex flex-col items-center">
-                <ColHeader label={col.label} />
-                <Column slots={halves[ci][0]} depth={ci} width={widths[ci]} tall={col.id === 'sf'} />
-              </div>
-              <Connector depth={ci} side="left" />
-            </div>
-          ))}
-
-          {/* FINAL */}
-          <div className="flex flex-col items-center flex-shrink-0">
-            <ColHeader label="Final · Jul 19" />
-            <div className="relative w-52" style={{ height: HALF_H }}>
-              <div className="absolute left-0 right-0 flex justify-center" style={{ top: HALF_H / 2 - CARD_H_LG / 2 }}>
-                <Card slot={final} height={CARD_H_LG} showDrink />
-              </div>
-            </div>
-          </div>
-
-          {/* RIGHT half (mirrored) */}
-          {[...columns].reverse().map((col, ri) => {
-            const ci = columns.length - 1 - ri
-            return (
-              <div key={`R-${col.id}`} className="flex items-start">
-                {ci === columns.length - 1
-                  ? <StraightConnector />
-                  : <Connector depth={ci} side="right" />}
+            {/* LEFT half */}
+            {columns.map((col, ci) => (
+              <div key={`L-${col.id}`} className="flex items-start">
                 <div className="flex flex-col items-center">
                   <ColHeader label={col.label} />
-                  <Column slots={halves[ci][1]} depth={ci} width={widths[ci]} tall={col.id === 'sf'} />
+                  <Column slots={halves[ci][0]} depth={ci} width={widths[ci]} tall={col.id === 'sf'} />
+                </div>
+                <Connector depth={ci} side="left" />
+              </div>
+            ))}
+
+            {/* FINAL */}
+            <div className="flex flex-col items-center flex-shrink-0">
+              <ColHeader label="Final · Jul 19" />
+              <div className="relative w-52" style={{ height: HALF_H }}>
+                <div className="absolute left-0 right-0 flex justify-center" style={{ top: HALF_H / 2 - CARD_H_LG / 2 }}>
+                  <Card slot={final} height={CARD_H_LG} showDrink />
                 </div>
               </div>
-            )
-          })}
+            </div>
 
-        </div>
+            {/* RIGHT half (mirrored) */}
+            {[...columns].reverse().map((col, ri) => {
+              const ci = columns.length - 1 - ri
+              return (
+                <div key={`R-${col.id}`} className="flex items-start">
+                  {ci === columns.length - 1
+                    ? <StraightConnector />
+                    : <Connector depth={ci} side="right" />}
+                  <div className="flex flex-col items-center">
+                    <ColHeader label={col.label} />
+                    <Column slots={halves[ci][1]} depth={ci} width={widths[ci]} tall={col.id === 'sf'} />
+                  </div>
+                </div>
+              )
+            })}
 
-        {/* Third-place + venue */}
-        <div className="flex flex-col items-center gap-4 mt-2">
-          <div className="text-center">
-            <div className="font-semibold">MetLife Stadium</div>
-            <div className="text-muted text-[11px]">East Rutherford, NJ</div>
           </div>
-          <div className="flex flex-col items-center">
-            <div className="num text-[10px] uppercase tracking-widest text-muted mb-2">Third-place play-off · Jul 18</div>
-            <div className="w-52">
-              <Card slot={third} height={CARD_H_LG} showDrink />
+
+          {/* Third-place + venue */}
+          <div className="flex flex-col items-center gap-4 mt-2">
+            <div className="text-center">
+              <div className="font-semibold">MetLife Stadium</div>
+              <div className="text-muted text-[11px]">East Rutherford, NJ</div>
+            </div>
+            <div className="flex flex-col items-center">
+              <div className="num text-[10px] uppercase tracking-widest text-muted mb-2">Third-place play-off · Jul 18</div>
+              <div className="w-52">
+                <Card slot={third} height={CARD_H_LG} showDrink />
+              </div>
             </div>
           </div>
         </div>
+      </div>
 
-        {/* Key */}
-        <div className="flex items-center justify-center gap-6 mt-8 flex-wrap">
-          <div className="flex items-center gap-1.5 text-[11px] text-muted">
-            <div className="w-3 h-3 border border-border rounded-sm bg-surface" />
-            Final result
-          </div>
-          <div className="flex items-center gap-1.5 text-[11px] text-muted">
-            <div className="w-3 h-3 border border-danger rounded-sm bg-surface" />
-            Live
-          </div>
-          <div className="flex items-center gap-1.5 text-[11px] text-muted">
-            <div className="w-3 h-3 border border-dashed border-border rounded-sm bg-surface-alt" />
-            TBD — awaiting earlier rounds
-          </div>
-          <div className="flex items-center gap-1.5 text-[11px] text-muted">
-            <span className="grid place-items-center w-4 h-4 rounded-sm bg-accent-soft text-accent-text"><Icon name="plus" size={10} /></span>
-            Tap a winner to mark your drink
-          </div>
+      {/* Key — outside the scrolling canvas, like the title, so it wraps on the viewport */}
+      <div className="flex items-center justify-center gap-x-6 gap-y-2 mt-8 px-4 flex-wrap">
+        <div className="flex items-center gap-1.5 text-[11px] text-muted">
+          <div className="w-3 h-3 border border-border rounded-sm bg-surface" />
+          Final result
+        </div>
+        <div className="flex items-center gap-1.5 text-[11px] text-muted">
+          <div className="w-3 h-3 border border-danger rounded-sm bg-surface" />
+          Live
+        </div>
+        <div className="flex items-center gap-1.5 text-[11px] text-muted">
+          <div className="w-3 h-3 border border-dashed border-border rounded-sm bg-surface-alt" />
+          TBD — awaiting earlier rounds
+        </div>
+        <div className="flex items-center gap-1.5 text-[11px] text-muted">
+          <span className="grid place-items-center w-4 h-4 rounded-sm bg-accent-soft text-accent-text"><Icon name="plus" size={10} /></span>
+          Tap a winner to mark your drink
         </div>
       </div>
     </div>
