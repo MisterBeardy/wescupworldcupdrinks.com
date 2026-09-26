@@ -3,10 +3,13 @@ import { Mode, Game } from '@/lib/types'
 import { Icon } from '@misterbeardy/design-system'
 import { TEAMS } from '@/lib/teams'
 import { buildBracket, KoSlot } from '@/lib/bracket'
+import type { ScoresStatus } from './GamePage'
 
 interface Props {
   mode: Mode
   knockoutGames: Game[]
+  status: ScoresStatus
+  showSkeleton: boolean   // loading has taken long enough to show placeholders
   drankSet: Set<string>
   onToggle: (abbr: string) => void
 }
@@ -28,8 +31,16 @@ const half = <T,>(arr: T[]): [T[], T[]] => {
   return [arr.slice(0, mid), arr.slice(mid)]
 }
 
-export default function Bracket({ mode, knockoutGames, drankSet, onToggle }: Props) {
+// Name-bar widths for the loading placeholders, varied so the bracket doesn't
+// read as a finished, identical list.
+const BAR_WIDTHS = ['62%', '48%', '70%', '40%', '56%', '66%']
+
+export default function Bracket({ mode, knockoutGames, status, showSkeleton, drankSet, onToggle }: Props) {
   const { columns, final, third } = buildBracket(knockoutGames)
+  // Until scores load, no slot is known: "TBD" would say no one has qualified
+  // yet. Loading draws placeholders in the rows (after the skeleton delay);
+  // an error leaves them blank. The error itself is the score panel's, above.
+  const pending = status !== 'ready'
 
   function TeamRow({
     abbr,
@@ -39,6 +50,7 @@ export default function Bracket({ mode, knockoutGames, drankSet, onToggle }: Pro
     won,
     showDrink,
     edge,
+    barWidth,
   }: {
     abbr?: string
     label: string
@@ -47,8 +59,22 @@ export default function Bracket({ mode, knockoutGames, drankSet, onToggle }: Pro
     won: boolean
     showDrink: boolean
     edge: 'top' | 'bottom'
+    barWidth: string
   }) {
     const team = teamByAbbr(abbr)
+
+    if (pending) {
+      return (
+        <div className="flex-1 flex items-center gap-1.5 px-2 min-h-0" aria-hidden="true">
+          {showSkeleton && (
+            <>
+              <span className="ds-skeleton-bar block flex-shrink-0 w-3.5 h-2.5 rounded-sm" />
+              <span className="ds-skeleton-bar block h-2 rounded" style={{ width: barWidth }} />
+            </>
+          )}
+        </div>
+      )
+    }
 
     if (!team) {
       return (
@@ -133,7 +159,9 @@ export default function Bracket({ mode, knockoutGames, drankSet, onToggle }: Pro
         className={[
           'w-full border rounded-[var(--radius-md)] flex flex-col relative',
           isLive ? 'border-danger bg-surface' :
-          isFinal ? 'border-border bg-surface' :
+          // Pending cards take the solid surface, so the placeholder bars
+          // (drawn in --surface-alt) show on them.
+          isFinal || pending ? 'border-border bg-surface' :
                     'border-border border-dashed bg-surface-alt',
         ].join(' ')}
       >
@@ -146,6 +174,7 @@ export default function Bracket({ mode, knockoutGames, drankSet, onToggle }: Pro
           won={slot.winnerAbbr != null && slot.winnerAbbr === slot.homeAbbr}
           showDrink={showDrink}
           edge="top"
+          barWidth={BAR_WIDTHS[(slot.num * 2) % BAR_WIDTHS.length]}
         />
         <div className="border-t border-border" />
         <TeamRow
@@ -156,6 +185,7 @@ export default function Bracket({ mode, knockoutGames, drankSet, onToggle }: Pro
           won={slot.winnerAbbr != null && slot.winnerAbbr === slot.awayAbbr}
           showDrink={showDrink}
           edge="bottom"
+          barWidth={BAR_WIDTHS[(slot.num * 2 + 1) % BAR_WIDTHS.length]}
         />
       </div>
     )
@@ -245,8 +275,13 @@ export default function Bracket({ mode, knockoutGames, drankSet, onToggle }: Pro
             Knockout bracket
           </h2>
           <p className="text-muted text-xs mt-1">
-            Fills in automatically as each match finishes · Jul 4 – Jul 19
+            {status === 'error'
+              ? 'Fills in once scores load · Jul 4 – Jul 19'
+              : 'Fills in automatically as each match finishes · Jul 4 – Jul 19'}
           </p>
+          {pending && showSkeleton && (
+            <span role="status" className="ds-visually-hidden">Loading bracket</span>
+          )}
         </div>
 
         {/* Bracket: R32 → R16 → QF → SF → Final → SF → QF → R16 → R32 */}
