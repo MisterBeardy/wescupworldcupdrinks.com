@@ -322,6 +322,8 @@ export default function GamePage() {
         <Bracket
           mode={mode}
           knockoutGames={games.filter(g => KNOCKOUT_ROUNDS.has(g.round ?? ''))}
+          status={status}
+          showSkeleton={showSkeleton}
           drankSet={drankSet}
           onToggle={toggleDrank}
         />
