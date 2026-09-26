@@ -3,7 +3,6 @@ import { Mode, Game } from '@/lib/types'
 import { Icon } from '@misterbeardy/design-system'
 import { TEAMS } from '@/lib/teams'
 import { buildBracket, KoSlot } from '@/lib/bracket'
-import DrinkLink from './DrinkLink'
 
 interface Props {
   mode: Mode
@@ -95,9 +94,12 @@ export default function Bracket({ mode, knockoutGames, drankSet, onToggle }: Pro
             <div className={`text-[11px] leading-tight truncate ${won ? 'font-bold' : 'text-muted'}`}>
               {team.name}
             </div>
+            {/* Plain text, not a DrinkLink: a 10px link can't reach 44px here
+                without covering the row's own tap area. The Groups view links
+                every drink. */}
             {showDrink && drink && (
-              <div className="text-[10px] leading-tight truncate">
-                <DrinkLink drink={drink} className="pointer-events-auto" />
+              <div className="text-[10px] leading-tight truncate text-muted">
+                {drink.drink}
               </div>
             )}
           </div>
