@@ -285,7 +285,7 @@ export default function Bracket({ mode, knockoutGames, status, showSkeleton, dra
       </div>
 
       <div className="w-full overflow-x-auto">
-        <div className="min-w-[1620px] px-4 pb-6">
+        <div className="min-w-[1620px] px-4">
           {/* Bracket: R32 → R16 → QF → SF → Final → SF → QF → R16 → R32 */}
           <div className="flex items-start justify-center">
 
@@ -341,26 +341,26 @@ export default function Bracket({ mode, knockoutGames, status, showSkeleton, dra
               </div>
             </div>
           </div>
+        </div>
+      </div>
 
-          {/* Key */}
-          <div className="flex items-center justify-center gap-6 mt-8 flex-wrap">
-            <div className="flex items-center gap-1.5 text-[11px] text-muted">
-              <div className="w-3 h-3 border border-border rounded-sm bg-surface" />
-              Final result
-            </div>
-            <div className="flex items-center gap-1.5 text-[11px] text-muted">
-              <div className="w-3 h-3 border border-danger rounded-sm bg-surface" />
-              Live
-            </div>
-            <div className="flex items-center gap-1.5 text-[11px] text-muted">
-              <div className="w-3 h-3 border border-dashed border-border rounded-sm bg-surface-alt" />
-              TBD — awaiting earlier rounds
-            </div>
-            <div className="flex items-center gap-1.5 text-[11px] text-muted">
-              <span className="grid place-items-center w-4 h-4 rounded-sm bg-accent-soft text-accent-text"><Icon name="plus" size={10} /></span>
-              Tap a winner to mark your drink
-            </div>
-          </div>
+      {/* Key — outside the scrolling canvas, like the title, so it wraps on the viewport */}
+      <div className="flex items-center justify-center gap-x-6 gap-y-2 mt-8 px-4 flex-wrap">
+        <div className="flex items-center gap-1.5 text-[11px] text-muted">
+          <div className="w-3 h-3 border border-border rounded-sm bg-surface" />
+          Final result
+        </div>
+        <div className="flex items-center gap-1.5 text-[11px] text-muted">
+          <div className="w-3 h-3 border border-danger rounded-sm bg-surface" />
+          Live
+        </div>
+        <div className="flex items-center gap-1.5 text-[11px] text-muted">
+          <div className="w-3 h-3 border border-dashed border-border rounded-sm bg-surface-alt" />
+          TBD — awaiting earlier rounds
+        </div>
+        <div className="flex items-center gap-1.5 text-[11px] text-muted">
+          <span className="grid place-items-center w-4 h-4 rounded-sm bg-accent-soft text-accent-text"><Icon name="plus" size={10} /></span>
+          Tap a winner to mark your drink
         </div>
       </div>
     </div>
