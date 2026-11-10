@@ -6,6 +6,7 @@ import TeamCard from '@/components/TeamCard'
 import ScorePanel from '@/components/ScorePanel'
 import Bracket from '@/components/Bracket'
 import PullToRefresh from '@/components/PullToRefresh'
+import { Banner, Button, Chip, Group, Input, Segmented, StatStrip } from '@misterbeardy/design-system'
 
 const DRANK_KEY = 'wc2026_drank_v3'
 const GROUPS = ['A','B','C','D','E','F','G','H','I','J','K','L']
@@ -14,6 +15,14 @@ const KNOCKOUT_ROUNDS = new Set([
 ])
 
 type View = 'groups' | 'bracket'
+export type ScoresStatus = 'loading' | 'ready' | 'error'
+
+// Only show the loading skeleton if the first fetch takes longer than this, so
+// a fast load doesn't flash placeholders for a frame.
+const SKELETON_DELAY_MS = 300
+// A refresh that fails is a quiet line under the scores; once refreshes have
+// been failing this long, it becomes a Banner above them.
+const STALE_BANNER_AFTER_MS = 5 * 60 * 1000
 
 // Convert each game's canonical UTC kickoff into the viewer's local date + time.
 // Runs in the browser, so date/time always match the timezone of whoever is viewing.
@@ -37,6 +46,15 @@ export default function GamePage() {
   const [search, setSearch] = useState('')
   const [view, setView] = useState<View>('groups')
   const [today, setToday] = useState('')
+  // 'loading' until the first fetch settles, 'error' if no scores could be
+  // loaded, 'ready' once we have scores (a later failed refresh keeps them).
+  const [status, setStatus] = useState<ScoresStatus>('loading')
+  const [showSkeleton, setShowSkeleton] = useState(false)
+  // When refreshes started failing (null while the last one worked), and
+  // whether that has gone on long enough to show the Banner.
+  const [failingSince, setFailingSince] = useState<number | null>(null)
+  const [refreshStale, setRefreshStale] = useState(false)
+  const [online, setOnline] = useState(true)
 
   // Resolve "today" in the browser's local timezone after mount (avoids any
   // server/client timezone mismatch during hydration).
@@ -52,15 +70,68 @@ export default function GamePage() {
     } catch {}
   }, [])
 
-  // Fetch scores
+  // Fetch scores. The route answers 200 with `error` set when its upstream
+  // source fails, so that counts as a failure too.
   const fetchScores = useCallback(async () => {
     try {
       const res = await fetch('/api/scores')
+      if (!res.ok) throw new Error(`Scores request failed: ${res.status}`)
       const data = await res.json()
+      if (data.error) throw new Error(`Scores source failed: ${data.error}`)
       setGames(localizeGames(data.games ?? []))
       setFetchedAt(data.fetchedAt ?? new Date().toISOString())
-    } catch {}
+      setStatus('ready')
+      setFailingSince(null)
+    } catch (err) {
+      console.error(err)
+      // Keep scores we already have; only an empty page becomes an error.
+      setStatus(prev => (prev === 'ready' ? 'ready' : 'error'))
+      setFailingSince(prev => prev ?? Date.now())
+    }
   }, [])
+
+  // Try again: from the error state, back to loading while it runs; with
+  // scores already showing, keep them up while it runs.
+  const retryScores = useCallback(() => {
+    setStatus(prev => (prev === 'ready' ? 'ready' : 'loading'))
+    return fetchScores()
+  }, [fetchScores])
+
+  useEffect(() => {
+    if (failingSince === null) {
+      setRefreshStale(false)
+      return
+    }
+    const wait = failingSince + STALE_BANNER_AFTER_MS - Date.now()
+    const timer = setTimeout(() => setRefreshStale(true), Math.max(0, wait))
+    return () => clearTimeout(timer)
+  }, [failingSince])
+
+  useEffect(() => {
+    if (status !== 'loading') {
+      setShowSkeleton(false)
+      return
+    }
+    const timer = setTimeout(() => setShowSkeleton(true), SKELETON_DELAY_MS)
+    return () => clearTimeout(timer)
+  }, [status])
+
+  // Track connectivity: a warning Banner while offline, and a refetch the
+  // moment the connection comes back.
+  useEffect(() => {
+    setOnline(navigator.onLine)
+    const goOnline = () => {
+      setOnline(true)
+      fetchScores()
+    }
+    const goOffline = () => setOnline(false)
+    window.addEventListener('online', goOnline)
+    window.addEventListener('offline', goOffline)
+    return () => {
+      window.removeEventListener('online', goOnline)
+      window.removeEventListener('offline', goOffline)
+    }
+  }, [fetchScores])
 
   // Manual refresh (pull-to-refresh): re-resolve today + refetch scores.
   const handleRefresh = useCallback(() => {
@@ -151,6 +222,9 @@ export default function GamePage() {
 
   // Stats
   const todayWinCount = games.filter(g => g.date === today && g.status === 'final' && g.hs !== g.as).length
+  // Score-derived stats have no value until scores load; don't show a false 0.
+  const scoreStat = (n: number | string) => (status === 'ready' ? n : '—')
+  const fmtFetched = fetchedAt ? new Date(fetchedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''
 
   // Filtered teams
   const filteredTeams = TEAMS.filter(t => {
@@ -168,82 +242,79 @@ export default function GamePage() {
 
   return (
     <PullToRefresh onRefresh={handleRefresh}>
-    <div className="min-h-screen text-[#f0ede6]" style={{
-      background: '#1a3a1a',
-      backgroundImage: 'repeating-linear-gradient(0deg,transparent,transparent 60px,rgba(255,255,255,.015) 60px,rgba(255,255,255,.015) 61px),repeating-linear-gradient(90deg,transparent,transparent 60px,rgba(255,255,255,.015) 60px,rgba(255,255,255,.015) 61px)'
-    }}>
+    <div className="min-h-screen bg-bg text-ink">
+
+      {/* Offline */}
+      {!online && (
+        <div className="max-w-xl mx-auto px-4 pt-4">
+          <Banner tone="warning" title="You're offline">
+            {status === 'ready' && fmtFetched
+              ? <>Scores are from <span className="num">{fmtFetched}</span>. They&apos;ll update when you&apos;re back online.</>
+              : <>Scores will load when you&apos;re back online.</>}
+          </Banner>
+        </div>
+      )}
 
       {/* Header */}
-      <header className="text-center px-4 pt-8 pb-5 border-b-2 border-dashed border-white/10">
-        <div className="text-[11px] tracking-[0.25em] text-yellow-400 uppercase mb-1">⚽ 2026 FIFA World Cup — Live</div>
-        <h1 className="font-['Bebas_Neue'] text-7xl tracking-tight leading-none">
-          DRINK<span className="text-yellow-400">&</span>WIN
+      <header className="text-center px-4 pt-8 pb-5">
+        <div className="num text-[11px] tracking-[0.2em] text-accent-text uppercase mb-2">2026 FIFA World Cup — Live</div>
+        <h1 className="text-6xl sm:text-7xl font-bold tracking-tight leading-none">
+          WIN<span className="text-accent-text">&amp;</span>DRINK
         </h1>
-        <p className="text-sm text-[#b8b4aa] mt-2 max-w-md mx-auto">
+        <p className="text-sm text-muted mt-3 max-w-md mx-auto">
           Winners auto-highlight. Tap their button to confirm you drank the shot.
         </p>
 
         {/* Stats */}
-        <div className="flex justify-center gap-8 mt-4 flex-wrap">
-          {[
-            { n: todayWinCount, l: 'Won Today' },
-            { n: drankSet.size, l: 'Shots Drank' },
-            { n: liveSet.size || '—', l: 'Live Now' },
-            { n: games.filter(g => g.status === 'final').length, l: 'Finished' },
-          ].map(({ n, l }) => (
-            <div key={l} className="text-center">
-              <span className="font-['Bebas_Neue'] text-3xl text-yellow-400 block leading-none">{n}</span>
-              <span className="text-[10px] tracking-[0.14em] uppercase text-[#b8b4aa]">{l}</span>
-            </div>
-          ))}
-        </div>
-
-        {/* Controls row */}
-        <div className="flex items-center justify-center gap-3 mt-3 flex-wrap">
-          <button onClick={resetDrank} className="border border-dashed border-red-500 text-red-500 hover:bg-red-500 hover:text-white text-[11px] uppercase tracking-widest font-bold px-3 py-1.5 rounded transition-colors">
-            ✕ Reset Drinks
-          </button>
+        <div className="max-w-xl mx-auto mt-5 text-left">
+          <Group>
+            <StatStrip stats={[
+              { label: 'Won today', value: scoreStat(todayWinCount), accent: true },
+              { label: 'Shots drank', value: drankSet.size },
+              { label: 'Live now', value: scoreStat(liveSet.size || '—') },
+              { label: 'Finished', value: scoreStat(games.filter(g => g.status === 'final').length) },
+            ]} />
+          </Group>
         </div>
 
         {/* Mode toggle */}
-        <div className="flex justify-center mt-3">
-          <div className="flex bg-black/35 border border-[#2d5a2d] rounded-full overflow-hidden">
-            {MODES.map(m => (
-              <button
-                key={m}
-                onClick={() => setMode(m)}
-                className={`px-5 py-2 text-xs font-bold uppercase tracking-widest transition-all ${mode === m ? `${MODE_META[m].active} rounded-full` : 'text-[#b8b4aa] hover:text-white'}`}
-              >
-                {MODE_META[m].label}
-              </button>
-            ))}
-          </div>
+        <div className="flex justify-center mt-5">
+          <Segmented
+            label="Drink list"
+            value={mode}
+            onChange={setMode}
+            options={MODES.map(m => ({ value: m, label: MODE_META[m].label }))}
+          />
+        </div>
+
+        {/* Controls row */}
+        <div className="flex justify-center mt-4">
+          <Button variant="ghost" size="sm" onClick={resetDrank}>Reset drinks</Button>
         </div>
       </header>
 
       {/* Score panel */}
-      <ScorePanel games={games} mode={mode} drankSet={drankSet} today={today} fetchedAt={fetchedAt} />
+      <ScorePanel
+        games={games}
+        mode={mode}
+        drankSet={drankSet}
+        today={today}
+        fetchedAt={fetchedAt}
+        status={status}
+        showSkeleton={showSkeleton}
+        refreshFailed={failingSince !== null && online}
+        refreshStale={refreshStale && online}
+        onRetry={retryScores}
+      />
 
       {/* View toggle — Groups vs Bracket */}
-      <div className="flex justify-center px-4 pt-4 pb-0">
-        <div className="flex bg-black/35 border border-[#2d5a2d] rounded-full overflow-hidden">
-          <button
-            onClick={() => setView('groups')}
-            className={`px-5 py-2 text-xs font-bold uppercase tracking-widest transition-all ${
-              view === 'groups' ? 'bg-yellow-400 text-black rounded-full' : 'text-[#b8b4aa] hover:text-white'
-            }`}
-          >
-            ⚽ Groups
-          </button>
-          <button
-            onClick={() => setView('bracket')}
-            className={`px-5 py-2 text-xs font-bold uppercase tracking-widest transition-all ${
-              view === 'bracket' ? 'bg-yellow-400 text-black rounded-full' : 'text-[#b8b4aa] hover:text-white'
-            }`}
-          >
-            🏆 Bracket
-          </button>
-        </div>
+      <div className="flex justify-center px-4 pt-6">
+        <Segmented
+          label="View"
+          value={view}
+          onChange={setView}
+          options={[{ value: 'groups', label: 'Groups' }, { value: 'bracket', label: 'Bracket' }]}
+        />
       </div>
 
       {/* Bracket view */}
@@ -251,6 +322,8 @@ export default function GamePage() {
         <Bracket
           mode={mode}
           knockoutGames={games.filter(g => KNOCKOUT_ROUNDS.has(g.round ?? ''))}
+          status={status}
+          showSkeleton={showSkeleton}
           drankSet={drankSet}
           onToggle={toggleDrank}
         />
@@ -260,15 +333,16 @@ export default function GamePage() {
       {view === 'groups' && (
         <>
           {/* Group filters */}
-          <div className="flex justify-center gap-2 px-4 pt-3 pb-1 flex-wrap">
+          <div className="flex justify-center gap-2 px-4 pt-4 pb-1 flex-wrap" role="group" aria-label="Group">
             {['ALL', ...GROUPS].map(g => (
               <button
                 key={g}
                 onClick={() => setGroup(g)}
-                className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-all ${
+                aria-pressed={group === g}
+                className={`num min-w-8 px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors ${
                   group === g
-                    ? 'bg-yellow-400 border-yellow-400 text-black font-bold'
-                    : 'border-[#2d5a2d] text-[#b8b4aa] hover:border-yellow-400/40 hover:text-white'
+                    ? 'bg-accent border-accent text-on-accent'
+                    : 'bg-surface border-border text-muted hover:text-ink'
                 }`}
               >
                 {g}
@@ -277,19 +351,22 @@ export default function GamePage() {
           </div>
 
           {/* Search */}
-          <div className="flex justify-center px-4 pb-3 pt-1">
-            <input
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              placeholder="🔍 Search team or drink..."
-              className="bg-[#0f2a0f] border border-[#2d5a2d] text-[#f0ede6] placeholder-[#b8b4aa] rounded-full px-4 py-2 text-sm w-full max-w-xs outline-none focus:border-yellow-400 transition-colors"
-            />
+          <div className="flex justify-center px-4 pb-4 pt-3">
+            <div className="w-full max-w-xs">
+              <Input
+                type="search"
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                placeholder="Search team or drink"
+                aria-label="Search team or drink"
+              />
+            </div>
           </div>
 
           {/* Groups */}
           <main className="max-w-7xl mx-auto px-4 pb-16">
             {groupsToShow.length === 0 && (
-              <p className="text-center text-[#b8b4aa] py-12">No teams found — maybe they didn&apos;t qualify. Like Italy. 🫡</p>
+              <p className="text-center text-muted py-12">No teams found — maybe they didn&apos;t qualify. Like Italy. 🫡</p>
             )}
 
             {groupsToShow.map(g => {
@@ -299,8 +376,8 @@ export default function GamePage() {
 
               return (
                 <section key={g} className="mb-8">
-                  <div className="border-b border-yellow-400/20 pb-1.5 mb-2">
-                    <h2 className="font-['Bebas_Neue'] text-2xl tracking-widest text-yellow-400">⚽ Group {g}</h2>
+                  <div className="border-b border-border pb-1.5 mb-3">
+                    <h2 className="text-xl font-bold">Group {g}</h2>
                   </div>
 
                   {/* Result pills — today only */}
@@ -310,20 +387,22 @@ export default function GamePage() {
                         const ht = game.home ? teamByAbbr(game.home) : undefined
                         const at = game.away ? teamByAbbr(game.away) : undefined
                         if (!ht) return null
+                        const pill = 'inline-flex items-center gap-1.5 bg-surface border border-border rounded-full pl-1 pr-2.5 py-0.5 text-xs'
                         if (game.status === 'live') {
                           return (
-                            <span key={`${game.home}-${game.away}`} className="inline-flex items-center gap-1.5 bg-red-500/10 border border-red-500/35 rounded-md px-2 py-1 text-xs text-white">
-                              <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
+                            <span key={`${game.home}-${game.away}`} className={pill}>
+                              <Chip tone="danger">LIVE</Chip>
                               {ht.flag} {ht.name}
-                              <span className="font-['Bebas_Neue'] text-sm">{game.hs}–{game.as}</span>
+                              <span className="num font-semibold">{game.hs}–{game.as}</span>
                               {at?.name} {at?.flag}
                             </span>
                           )
                         }
                         if (game.hs === game.as) {
                           return (
-                            <span key={`${game.home}-${game.away}`} className="inline-flex items-center gap-1.5 bg-white/5 border border-white/12 rounded-full px-2.5 py-0.5 text-xs text-[#b8b4aa]">
-                              {ht.flag} {ht.name} <span className="font-['Bebas_Neue'] text-sm text-white">{game.hs}–{game.as}</span> {at?.name} {at?.flag} <span className="text-[10px]">DRAW</span>
+                            <span key={`${game.home}-${game.away}`} className={pill}>
+                              <Chip tone="neutral">DRAW</Chip>
+                              {ht.flag} {ht.name} <span className="num font-semibold">{game.hs}–{game.as}</span> {at?.name} {at?.flag}
                             </span>
                           )
                         }
@@ -332,8 +411,9 @@ export default function GamePage() {
                         const lt = game.hs > game.as ? (game.away ? teamByAbbr(game.away) : undefined) : (game.home ? teamByAbbr(game.home) : undefined)
                         const ws = Math.max(game.hs, game.as), ls = Math.min(game.hs, game.as)
                         return (
-                          <span key={`${game.home}-${game.away}`} title={`Beat ${lt?.name}`} className="inline-flex items-center gap-1.5 bg-yellow-400/8 border border-yellow-400/25 rounded-full px-2.5 py-0.5 text-xs text-yellow-400 font-semibold">
-                            {wt?.flag} {wt?.name} <span className="font-['Bebas_Neue'] text-sm opacity-70">{ws}–{ls}</span>
+                          <span key={`${game.home}-${game.away}`} title={`Beat ${lt?.name}`} className={pill}>
+                            <Chip tone="success">WON</Chip>
+                            {wt?.flag} {wt?.name} <span className="num font-semibold">{ws}–{ls}</span>
                           </span>
                         )
                       })}
@@ -361,7 +441,7 @@ export default function GamePage() {
         </>
       )}
 
-      <footer className="text-center py-4 text-[10px] text-[#b8b4aa] border-t border-white/8">
+      <footer className="text-center py-4 text-[11px] text-muted border-t border-border">
         Scores refresh every 60s · Drink responsibly · World Cup June 11 – July 19 2026 🍺
       </footer>
     </div>

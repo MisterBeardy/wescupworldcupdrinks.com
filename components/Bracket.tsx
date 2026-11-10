@@ -1,12 +1,15 @@
 'use client'
 import { Mode, Game } from '@/lib/types'
-import { TEAMS, MODE_META } from '@/lib/teams'
+import { Icon } from '@misterbeardy/design-system'
+import { TEAMS } from '@/lib/teams'
 import { buildBracket, KoSlot } from '@/lib/bracket'
-import DrinkLink from './DrinkLink'
+import type { ScoresStatus } from './GamePage'
 
 interface Props {
   mode: Mode
   knockoutGames: Game[]
+  status: ScoresStatus
+  showSkeleton: boolean   // loading has taken long enough to show placeholders
   drankSet: Set<string>
   onToggle: (abbr: string) => void
 }
@@ -21,15 +24,23 @@ const PITCH = 76         // centre-to-centre spacing of Round-of-32 cards
 const HALF_H = PITCH * 8 // height of one half of the bracket (8 R32 leaves)
 const LABEL_H = 28       // column-header height, kept uniform so rows align
 const CONN_W = 26        // connector column width
-const LINE = 'rgba(255,255,255,0.15)'
+const LINE = 'var(--border)'
 
 const half = <T,>(arr: T[]): [T[], T[]] => {
   const mid = arr.length / 2
   return [arr.slice(0, mid), arr.slice(mid)]
 }
 
-export default function Bracket({ mode, knockoutGames, drankSet, onToggle }: Props) {
+// Name-bar widths for the loading placeholders, varied so the bracket doesn't
+// read as a finished, identical list.
+const BAR_WIDTHS = ['62%', '48%', '70%', '40%', '56%', '66%']
+
+export default function Bracket({ mode, knockoutGames, status, showSkeleton, drankSet, onToggle }: Props) {
   const { columns, final, third } = buildBracket(knockoutGames)
+  // Until scores load, no slot is known: "TBD" would say no one has qualified
+  // yet. Loading draws placeholders in the rows (after the skeleton delay);
+  // an error leaves them blank. The error itself is the score panel's, above.
+  const pending = status !== 'ready'
 
   function TeamRow({
     abbr,
@@ -38,6 +49,8 @@ export default function Bracket({ mode, knockoutGames, drankSet, onToggle }: Pro
     pens,
     won,
     showDrink,
+    edge,
+    barWidth,
   }: {
     abbr?: string
     label: string
@@ -45,13 +58,28 @@ export default function Bracket({ mode, knockoutGames, drankSet, onToggle }: Pro
     pens?: number
     won: boolean
     showDrink: boolean
+    edge: 'top' | 'bottom'
+    barWidth: string
   }) {
     const team = teamByAbbr(abbr)
+
+    if (pending) {
+      return (
+        <div className="flex-1 flex items-center gap-1.5 px-2 min-h-0" aria-hidden="true">
+          {showSkeleton && (
+            <>
+              <span className="ds-skeleton-bar block flex-shrink-0 w-3.5 h-2.5 rounded-sm" />
+              <span className="ds-skeleton-bar block h-2 rounded" style={{ width: barWidth }} />
+            </>
+          )}
+        </div>
+      )
+    }
 
     if (!team) {
       return (
         <div className="flex-1 flex items-center px-2 min-h-0">
-          <span className="text-white/25 text-[9px] font-bold uppercase tracking-wide truncate">
+          <span className="num text-muted text-[10px] uppercase tracking-wide truncate">
             {label || 'TBD'}
           </span>
         </div>
@@ -60,48 +88,64 @@ export default function Bracket({ mode, knockoutGames, drankSet, onToggle }: Pro
 
     const drink = team[mode]
     const hasDrank = abbr ? drankSet.has(abbr) : false
+    // Only the winner's row takes taps: the whole row marks (or un-marks) the
+    // drink, so the target is the row, not the small glyph at its end.
+    const tappable = won && !!abbr
 
     return (
       <div className={[
-        'flex-1 flex items-center gap-1.5 px-2 min-h-0',
-        won ? 'bg-yellow-400/10' : '',
+        // pointer-events-none: a positioned row would otherwise sit over the
+        // other row's enlarged tap area and swallow its taps.
+        'relative flex-1 flex items-center min-h-0 pointer-events-none',
         hasDrank ? 'opacity-50' : '',
       ].join(' ')}>
-        <span className="text-sm leading-none flex-shrink-0">{team.flag}</span>
-        <div className="flex-1 min-w-0">
-          <div className={`text-[11px] font-bold leading-tight truncate ${won ? 'text-yellow-300' : 'text-white/80'}`}>
-            {team.name}
-          </div>
-          {showDrink && drink && (
-            <div className={`text-[9px] leading-tight truncate ${MODE_META[mode].textSoft}`}>
-              <DrinkLink drink={drink} />
-            </div>
-          )}
-        </div>
-        {score !== undefined && (
-          <span className={`font-['Bebas_Neue'] text-sm leading-none flex-shrink-0 ${won ? 'text-yellow-300' : 'text-white/50'}`}>
-            {score}
-            {pens !== undefined && <span className="text-[9px] align-top ml-0.5 opacity-70">({pens})</span>}
-          </span>
-        )}
-        {won && abbr && !hasDrank && (
+        {tappable && (
           <button
             onClick={() => onToggle(abbr)}
-            title="Mark as drank"
-            className="text-[9px] bg-yellow-400/20 hover:bg-yellow-400/40 border border-yellow-400/40 text-yellow-300 rounded px-1 leading-none flex-shrink-0 transition-colors"
-          >
-            🥃
-          </button>
+            title={hasDrank ? 'Drank — tap to undo' : 'Mark as drank'}
+            aria-label={`Mark ${team.name} as drank`}
+            aria-pressed={hasDrank}
+            className={[
+              'bracket-hit absolute inset-0 pointer-events-auto hover:bg-surface-alt',
+              'focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent',
+              edge === 'top'
+                ? 'rounded-t-[calc(var(--radius-md)-1px)]'
+                : 'rounded-b-[calc(var(--radius-md)-1px)]',
+            ].join(' ')}
+          />
         )}
-        {hasDrank && (
-          <button
-            onClick={() => abbr && onToggle(abbr)}
-            title="Undo"
-            className="text-[9px] text-orange-400 flex-shrink-0"
-          >
-            ✓
-          </button>
-        )}
+        <div className="relative flex-1 min-w-0 flex items-center gap-1.5 px-2">
+          <span className="text-sm leading-none flex-shrink-0">{team.flag}</span>
+          <div className="flex-1 min-w-0">
+            <div className={`text-[11px] leading-tight truncate ${won ? 'font-bold' : 'text-muted'}`}>
+              {team.name}
+            </div>
+            {/* Plain text, not a DrinkLink: a 10px link can't reach 44px here
+                without covering the row's own tap area. The Groups view links
+                every drink. */}
+            {showDrink && drink && (
+              <div className="text-[10px] leading-tight truncate text-muted">
+                {drink.drink}
+              </div>
+            )}
+          </div>
+          {score !== undefined && (
+            <span className={`num text-xs leading-none flex-shrink-0 ${won ? 'font-bold' : 'text-muted'}`}>
+              {score}
+              {pens !== undefined && <span className="text-[9px] align-top ml-0.5 opacity-70">({pens})</span>}
+            </span>
+          )}
+          {tappable && !hasDrank && (
+            <span className="grid place-items-center w-4 h-4 rounded-sm bg-accent-soft text-accent-text flex-shrink-0">
+              <Icon name="plus" size={10} />
+            </span>
+          )}
+          {hasDrank && (
+            <span className="text-success-text flex-shrink-0" aria-label="Drank" role="img">
+              <Icon name="check" size={12} />
+            </span>
+          )}
+        </div>
       </div>
     )
   }
@@ -113,13 +157,15 @@ export default function Bracket({ mode, knockoutGames, drankSet, onToggle }: Pro
       <div
         style={{ height }}
         className={[
-          'w-full border rounded-lg overflow-hidden flex flex-col relative',
-          isLive ? 'border-red-500/50 bg-red-950/20' :
-          isFinal ? 'border-yellow-400/30 bg-yellow-950/10' :
-                    'border-white/12 bg-white/4',
+          'w-full border rounded-[var(--radius-md)] flex flex-col relative',
+          isLive ? 'border-danger bg-surface' :
+          // Pending cards take the solid surface, so the placeholder bars
+          // (drawn in --surface-alt) show on them.
+          isFinal || pending ? 'border-border bg-surface' :
+                    'border-border border-dashed bg-surface-alt',
         ].join(' ')}
       >
-        {isLive && <span className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />}
+        {isLive && <span className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-danger animate-pulse" />}
         <TeamRow
           abbr={slot.homeAbbr}
           label={slot.homeLabel}
@@ -127,8 +173,10 @@ export default function Bracket({ mode, knockoutGames, drankSet, onToggle }: Pro
           pens={slot.homePens}
           won={slot.winnerAbbr != null && slot.winnerAbbr === slot.homeAbbr}
           showDrink={showDrink}
+          edge="top"
+          barWidth={BAR_WIDTHS[(slot.num * 2) % BAR_WIDTHS.length]}
         />
-        <div className="border-t border-white/8" />
+        <div className="border-t border-border" />
         <TeamRow
           abbr={slot.awayAbbr}
           label={slot.awayLabel}
@@ -136,6 +184,8 @@ export default function Bracket({ mode, knockoutGames, drankSet, onToggle }: Pro
           pens={slot.awayPens}
           won={slot.winnerAbbr != null && slot.winnerAbbr === slot.awayAbbr}
           showDrink={showDrink}
+          edge="bottom"
+          barWidth={BAR_WIDTHS[(slot.num * 2 + 1) % BAR_WIDTHS.length]}
         />
       </div>
     )
@@ -205,7 +255,7 @@ export default function Bracket({ mode, knockoutGames, drankSet, onToggle }: Pro
   function ColHeader({ label }: { label: string }) {
     return (
       <div
-        className="text-[10px] font-bold uppercase tracking-widest text-yellow-400/70 text-center whitespace-nowrap flex items-center justify-center"
+        className="num text-[10px] uppercase tracking-widest text-muted text-center whitespace-nowrap flex items-center justify-center"
         style={{ height: LABEL_H }}
       >
         {label}
@@ -217,92 +267,100 @@ export default function Bracket({ mode, knockoutGames, drankSet, onToggle }: Pro
   const halves = columns.map(c => half(c.slots))
 
   return (
-    <div className="w-full overflow-x-auto pb-8">
-      <div className="min-w-[1620px] px-4 py-6">
-        {/* Title */}
-        <div className="text-center mb-6">
-          <h2 className="font-['Bebas_Neue'] text-3xl tracking-widest text-yellow-400">
-            ⚽ Knockout Bracket
-          </h2>
-          <p className="text-white/30 text-xs mt-1">
-            Fills in automatically as each match finishes · Jul 4 – Jul 19
-          </p>
-        </div>
+    <div className="w-full pb-8">
+      {/* Title — outside the scrolling canvas so it centres on the viewport,
+          not on the 1620px bracket, at phone width. */}
+      <div className="text-center px-4 pt-6 mb-6">
+        <h2 className="text-2xl font-bold">
+          Knockout bracket
+        </h2>
+        <p className="text-muted text-xs mt-1">
+          {status === 'error'
+            ? 'Fills in once scores load · Jul 4 – Jul 19'
+            : 'Fills in automatically as each match finishes · Jul 4 – Jul 19'}
+        </p>
+        {pending && showSkeleton && (
+          <span role="status" className="ds-visually-hidden">Loading bracket</span>
+        )}
+      </div>
 
-        {/* Bracket: R32 → R16 → QF → SF → Final → SF → QF → R16 → R32 */}
-        <div className="flex items-start justify-center">
+      <div className="w-full overflow-x-auto">
+        <div className="min-w-[1620px] px-4">
+          {/* Bracket: R32 → R16 → QF → SF → Final → SF → QF → R16 → R32 */}
+          <div className="flex items-start justify-center">
 
-          {/* LEFT half */}
-          {columns.map((col, ci) => (
-            <div key={`L-${col.id}`} className="flex items-start">
-              <div className="flex flex-col items-center">
-                <ColHeader label={col.label} />
-                <Column slots={halves[ci][0]} depth={ci} width={widths[ci]} tall={col.id === 'sf'} />
-              </div>
-              <Connector depth={ci} side="left" />
-            </div>
-          ))}
-
-          {/* FINAL */}
-          <div className="flex flex-col items-center flex-shrink-0">
-            <ColHeader label="🏆 Final · Jul 19" />
-            <div className="relative w-52" style={{ height: HALF_H }}>
-              <div className="absolute left-0 right-0 flex justify-center" style={{ top: HALF_H / 2 - CARD_H_LG / 2 }}>
-                <Card slot={final} height={CARD_H_LG} showDrink />
-              </div>
-            </div>
-          </div>
-
-          {/* RIGHT half (mirrored) */}
-          {[...columns].reverse().map((col, ri) => {
-            const ci = columns.length - 1 - ri
-            return (
-              <div key={`R-${col.id}`} className="flex items-start">
-                {ci === columns.length - 1
-                  ? <StraightConnector />
-                  : <Connector depth={ci} side="right" />}
+            {/* LEFT half */}
+            {columns.map((col, ci) => (
+              <div key={`L-${col.id}`} className="flex items-start">
                 <div className="flex flex-col items-center">
                   <ColHeader label={col.label} />
-                  <Column slots={halves[ci][1]} depth={ci} width={widths[ci]} tall={col.id === 'sf'} />
+                  <Column slots={halves[ci][0]} depth={ci} width={widths[ci]} tall={col.id === 'sf'} />
+                </div>
+                <Connector depth={ci} side="left" />
+              </div>
+            ))}
+
+            {/* FINAL */}
+            <div className="flex flex-col items-center flex-shrink-0">
+              <ColHeader label="Final · Jul 19" />
+              <div className="relative w-52" style={{ height: HALF_H }}>
+                <div className="absolute left-0 right-0 flex justify-center" style={{ top: HALF_H / 2 - CARD_H_LG / 2 }}>
+                  <Card slot={final} height={CARD_H_LG} showDrink />
                 </div>
               </div>
-            )
-          })}
+            </div>
 
-        </div>
+            {/* RIGHT half (mirrored) */}
+            {[...columns].reverse().map((col, ri) => {
+              const ci = columns.length - 1 - ri
+              return (
+                <div key={`R-${col.id}`} className="flex items-start">
+                  {ci === columns.length - 1
+                    ? <StraightConnector />
+                    : <Connector depth={ci} side="right" />}
+                  <div className="flex flex-col items-center">
+                    <ColHeader label={col.label} />
+                    <Column slots={halves[ci][1]} depth={ci} width={widths[ci]} tall={col.id === 'sf'} />
+                  </div>
+                </div>
+              )
+            })}
 
-        {/* Third-place + venue */}
-        <div className="flex flex-col items-center gap-4 mt-2">
-          <div className="text-center">
-            <div className="font-['Bebas_Neue'] text-yellow-400 text-lg tracking-wider">MetLife Stadium</div>
-            <div className="text-white/30 text-[10px]">East Rutherford, NJ</div>
           </div>
-          <div className="flex flex-col items-center">
-            <div className="text-[10px] font-bold uppercase tracking-widest text-white/40 mb-2">🥉 Third-Place Play-off · Jul 18</div>
-            <div className="w-52">
-              <Card slot={third} height={CARD_H_LG} showDrink />
+
+          {/* Third-place + venue */}
+          <div className="flex flex-col items-center gap-4 mt-2">
+            <div className="text-center">
+              <div className="font-semibold">MetLife Stadium</div>
+              <div className="text-muted text-[11px]">East Rutherford, NJ</div>
+            </div>
+            <div className="flex flex-col items-center">
+              <div className="num text-[10px] uppercase tracking-widest text-muted mb-2">Third-place play-off · Jul 18</div>
+              <div className="w-52">
+                <Card slot={third} height={CARD_H_LG} showDrink />
+              </div>
             </div>
           </div>
         </div>
+      </div>
 
-        {/* Key */}
-        <div className="flex items-center justify-center gap-6 mt-8 flex-wrap">
-          <div className="flex items-center gap-1.5 text-[10px] text-white/30">
-            <div className="w-3 h-3 border border-yellow-400/40 rounded bg-yellow-950/20" />
-            Final result
-          </div>
-          <div className="flex items-center gap-1.5 text-[10px] text-white/30">
-            <div className="w-3 h-3 border border-red-500/40 rounded bg-red-950/20" />
-            Live
-          </div>
-          <div className="flex items-center gap-1.5 text-[10px] text-white/30">
-            <div className="w-3 h-3 border border-white/12 rounded bg-white/4" />
-            TBD — awaiting earlier rounds
-          </div>
-          <div className="flex items-center gap-1.5 text-[10px] text-white/30">
-            <span>🥃</span>
-            Tap a winner to mark your drink
-          </div>
+      {/* Key — outside the scrolling canvas, like the title, so it wraps on the viewport */}
+      <div className="flex items-center justify-center gap-x-6 gap-y-2 mt-8 px-4 flex-wrap">
+        <div className="flex items-center gap-1.5 text-[11px] text-muted">
+          <div className="w-3 h-3 border border-border rounded-sm bg-surface" />
+          Final result
+        </div>
+        <div className="flex items-center gap-1.5 text-[11px] text-muted">
+          <div className="w-3 h-3 border border-danger rounded-sm bg-surface" />
+          Live
+        </div>
+        <div className="flex items-center gap-1.5 text-[11px] text-muted">
+          <div className="w-3 h-3 border border-dashed border-border rounded-sm bg-surface-alt" />
+          TBD — awaiting earlier rounds
+        </div>
+        <div className="flex items-center gap-1.5 text-[11px] text-muted">
+          <span className="grid place-items-center w-4 h-4 rounded-sm bg-accent-soft text-accent-text"><Icon name="plus" size={10} /></span>
+          Tap a winner to mark your drink
         </div>
       </div>
     </div>

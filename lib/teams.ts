@@ -198,18 +198,11 @@ export const TEAMS: Team[] = [
 // Drink modes, in toggle order. Each team carries a Drink for every mode.
 export const MODES: Mode[] = ['auth', 'usa', 'beer']
 
-// Per-mode presentation: toggle label, line icon, text colors, and the
-// active-toggle classes. Keeps the three modes consistent across components.
-export const MODE_META: Record<Mode, {
-  label: string
-  icon: string
-  text: string
-  textSoft: string
-  active: string
-}> = {
-  auth: { label: '🌍 Authentic',    icon: '🥃', text: 'text-emerald-400', textSoft: 'text-emerald-400/80', active: 'bg-yellow-400 text-black' },
-  usa:  { label: '🇺🇸 American Bar', icon: '🍸', text: 'text-sky-300',     textSoft: 'text-sky-300/80',     active: 'bg-blue-600 text-white' },
-  beer: { label: '🍺 Beer',         icon: '🍺', text: 'text-amber-400',   textSoft: 'text-amber-400/80',   active: 'bg-amber-500 text-black' },
+// Per-mode toggle label.
+export const MODE_META: Record<Mode, { label: string }> = {
+  auth: { label: 'Authentic' },
+  usa:  { label: 'American Bar' },
+  beer: { label: 'Beer' },
 }
 
 // YYYY-MM-DD for a Date, expressed in the browser's local timezone.
